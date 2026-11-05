@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 const root=path.resolve(import.meta.dirname,'..');
 const platform={win32:'windows'}[process.platform]||process.platform;
 const arch={x64:'amd64',arm64:'arm64'}[process.arch];
-const name=`magpie-intelligence-check-${platform}-${arch}`;
+const name=`dsh-intelligence-check-${platform}-${arch}`;
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'quality-install-'));
 try{
  const unpack=spawnSync('tar',['-xzf',path.join(root,'dist',name+'.tgz'),'-C',dir],{stdio:'inherit'});assert.equal(unpack.status,0);
@@ -18,7 +18,7 @@ try{
   const registration=spawnSync(process.env.MAGPIE_BINARY,['plugin','add',installed],{env,encoding:'utf8',timeout:90000});
   assert.equal(registration.status,0,registration.stdout+registration.stderr);
   const saved=JSON.parse(await fs.readFile(path.join(dir,'config','magpie','plugins.json'),'utf8'));assert.ok(saved.plugins.some(p=>p.spec===installed));
-  const listing=spawnSync(process.env.MAGPIE_BINARY,['plugin'],{env,encoding:'utf8',timeout:90000});assert.equal(listing.status,0,listing.stdout+listing.stderr);assert.match(listing.stdout+listing.stderr,/quality-check|Intelligence Check|intelligence-check/);
+  const listing=spawnSync(process.env.MAGPIE_BINARY,['plugin'],{env,encoding:'utf8',timeout:90000});assert.equal(listing.status,0,listing.stdout+listing.stderr);assert.match(listing.stdout+listing.stderr,/dsh-intelligence-check/);
   console.log('PASS: real Magpie registers extracted package and recognizes plugin');
  }
  console.log('PASS: extracted release plugin starts without Go, issues management tickets, and cleans up with host');

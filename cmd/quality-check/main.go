@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/gofrs/flock"
-	"github.com/mu-zi-lee/magpie-intelligence-check/internal/check"
+	"github.com/Lanjunyee/dsh-intelligence-check/internal/check"
 	"io"
 	"net"
 	"net/http"

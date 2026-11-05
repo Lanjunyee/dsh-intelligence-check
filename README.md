@@ -1,6 +1,12 @@
-# Magpie Intelligence Check
+# dsh-intelligence-check
 
-Magpie 插件，用于对指定的主力模型做质量探针，并在探针未通过或结果过期时拦截后续请求，等待自动检测或人工处理。
+项目仓库：[Lanjunyee/dsh-intelligence-check](https://github.com/Lanjunyee/dsh-intelligence-check)。
+
+项目正在迁移为 DeepSeek Harness 原生模型质量测试与报告插件，目标是复用宿主模型配置与凭据，保留 Go 后端和独立网页控制台，检测结果不阻断业务请求。迁移设计见 [设计文档](docs/dsh-migration.md)，实现规格见 [Issue #1](https://github.com/Lanjunyee/dsh-intelligence-check/issues/1)。
+
+**当前状态：已完成项目重命名，DSH 宿主适配尚未实现。以下安装、配置与门禁说明对应当前的 Magpie 实现，不代表已经支持 DSH。**
+
+当前实现是 Magpie 插件，用于对指定的主力模型做质量探针，并在探针未通过或结果过期时拦截后续请求，等待自动检测或人工处理。
 
 项目由两部分组成：
 
@@ -33,11 +39,11 @@ Magpie 插件，用于对指定的主力模型做质量探针，并在探针未�
 在“已有想装的？”输入框填写：
 
 ```text
-github:mu-zi-lee/magpie-intelligence-check
+github:Lanjunyee/dsh-intelligence-check
 ```
 
 仓库包含五个平台的 Go 二进制，插件会按 Magpie 所在机器的系统和架构选择。
-供应商显示名为 **Intelligence Check**。更新后请重新安装插件并重新打开管理入口。
+供应商显示名为 **dsh-intelligence-check**。更新后请重新安装插件并重新打开管理入口。
 
 ### 使用发行包
 
@@ -45,17 +51,17 @@ github:mu-zi-lee/magpie-intelligence-check
 
 | 平台 | 文件 |
 | --- | --- |
-| Linux x86_64 | `magpie-intelligence-check-linux-amd64.tgz` |
-| Linux ARM64 | `magpie-intelligence-check-linux-arm64.tgz` |
-| macOS Intel | `magpie-intelligence-check-darwin-amd64.tgz` |
-| macOS Apple Silicon | `magpie-intelligence-check-darwin-arm64.tgz` |
-| Windows x86_64 | `magpie-intelligence-check-windows-amd64.tgz` |
+| Linux x86_64 | `dsh-intelligence-check-linux-amd64.tgz` |
+| Linux ARM64 | `dsh-intelligence-check-linux-arm64.tgz` |
+| macOS Intel | `dsh-intelligence-check-darwin-amd64.tgz` |
+| macOS Apple Silicon | `dsh-intelligence-check-darwin-arm64.tgz` |
+| Windows x86_64 | `dsh-intelligence-check-windows-amd64.tgz` |
 
 解压后，把解压出的**完整目录**添加到 Magpie：
 
 ```sh
-tar -xzf magpie-intelligence-check-darwin-arm64.tgz
-magpie plugin add /absolute/path/to/magpie-intelligence-check-darwin-arm64
+tar -xzf dsh-intelligence-check-darwin-arm64.tgz
+magpie plugin add /absolute/path/to/dsh-intelligence-check-darwin-arm64
 ```
 
 安装目录需要保持固定并可写。插件会在其中读取 JavaScript 门禁文件，并由 Go 后台原子更新该文件。
@@ -68,7 +74,7 @@ magpie plugin add /absolute/path/to/magpie-intelligence-check-darwin-arm64
 
 ```sh
 go build -o bin/quality-check ./cmd/quality-check
-magpie plugin add /absolute/path/to/magpie-intelligence-check
+magpie plugin add /absolute/path/to/dsh-intelligence-check
 ```
 
 开发目录需要包含 `plugin/`、`bin/quality-check`、`package.json` 和 `third_party/`。Magpie 主进程（桌面应用、`magpie web` 或 `magpie serve`）必须保持运行；插件后台跟随宿主进程生命周期。
@@ -176,7 +182,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 欢迎实际测试后反馈：哪些题目现在仍然好用，哪些已经失效、答案有争议，或容易误判？现有题库不保证对所有模型版本、渠道和系统提示词都有效，请结合页面中的原始回答自行确认。
 
-如果你有**更新、可用的测试题**，或发现更适合推理、翻译、知识、复述等能力的题目，请[提交题库反馈 Issue](https://github.com/mu-zi-lee/magpie-intelligence-check/issues/new?template=question-bank.yml)。维护者会审核后手动添加或更新，不会自动把社区题目纳入门禁。
+如果你有**更新、可用的测试题**，或发现更适合推理、翻译、知识、复述等能力的题目，请[提交题库反馈 Issue](https://github.com/Lanjunyee/dsh-intelligence-check/issues/new?template=question-bank.yml)。维护者会审核后手动添加或更新，不会自动把社区题目纳入门禁。
 
 提交时请提供：
 
@@ -242,11 +248,11 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 ```json
 {
-  "dataDir": "/srv/magpie-quality/data",
+  "dataDir": "/srv/dsh-intelligence-check/data",
   "gatewayURL": "http://127.0.0.1:3425",
   "gatewayKey": "magpie",
   "logPath": "/srv/magpie/gateway.log",
-  "binaryPath": "/srv/magpie-quality/bin/quality-check",
+  "binaryPath": "/srv/dsh-intelligence-check/bin/quality-check",
   "cloudflaredPath": "/usr/local/bin/cloudflared",
   "autoInstallCloudflared": true
 }
@@ -254,7 +260,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 字段说明：
 
-- `dataDir`：SQLite、门禁状态和 Cloudflare 缓存目录。默认 `~/.config/magpie-quality-check`；
+- `dataDir`：SQLite、门禁状态和 Cloudflare 缓存目录。默认 `~/.config/dsh-intelligence-check`；
 - `gatewayURL`、`gatewayKey`、`logPath`：用于首次自动连接配置，不覆盖控制台已有设置；
 - `binaryPath`：指定 Go 后台二进制；
 - `cloudflaredPath`：指定官方 `cloudflared`；
