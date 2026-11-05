@@ -4,7 +4,7 @@
 
 项目正在迁移为 DeepSeek Harness 原生模型质量测试与报告插件，目标是复用宿主模型配置与凭据，保留 Go 后端和独立网页控制台，检测结果不阻断业务请求。迁移设计见 [设计文档](docs/dsh-migration.md)，实现规格见 [Issue #1](https://github.com/Lanjunyee/dsh-intelligence-check/issues/1)。
 
-**当前状态：已完成业务门禁解耦与 DSH 原生插件入口（Issue #3）。插件按 profile 启动 Go 后台、提供宿主控制台入口并随宿主退出清理；宿主模型目录与检测调用桥接、自动检测和最终 bundle 分发仍由后续迁移票完成。**
+**当前状态：已完成业务门禁解耦、DSH 原生插件入口（Issue #3）与官方 bundle/五平台分发（Issue #10）。插件按 profile 启动 Go 后台、提供宿主控制台入口并随宿主退出清理；宿主模型目录与检测调用桥接、自动检测仍由后续迁移票完成，最终整体验收见 Issue #11。**
 
 当前实现是 DSH 原生 Cordis 插件，对指定的模型执行主动质量检测并保存报告；检测运行、失败或异常结果均不拦截业务请求，也不改写业务模型路由。
 
@@ -26,9 +26,32 @@
 
 ## 安装
 
-### 在 DSH profile 中安装
+本包以 DSH 官方 bundle 分发：`package.json` 声明 `dsh.bundle.patch` 与 `dsh.bundle.platforms`，`cordis.patch.yml` 插入 `dsh-intelligence-check` 插件行，`engines.dsh` 限定 `>=0.2.0 <0.3.0`。已在 DSH `0.2.2-rc.1` 验证。包清单的 `icon` 指向 `assets/plugin-icon.png`（小于 256 KiB），完整图标资源仍随包分发。
 
-包内声明 `dsh.bundle` 并插入原生 Cordis 插件行。开发检出可直接安装到隔离 profile：
+### 从发行包安装（使用者无需 Go）
+
+`dist/dsh-intelligence-check-<platform>-<arch>.tgz` 已内置对应平台的 Go 后台，安装时不需要 Go、pnpm 或现场编译：
+
+```sh
+dsh plugin --profile <name> add /absolute/path/to/dsh-intelligence-check-darwin-arm64.tgz
+dsh --profile <name>
+```
+
+| 平台 | 安装包 |
+| --- | --- |
+| macOS Apple Silicon | `dsh-intelligence-check-darwin-arm64.tgz` |
+| macOS Intel | `dsh-intelligence-check-darwin-amd64.tgz` |
+| Linux x86-64 | `dsh-intelligence-check-linux-amd64.tgz` |
+| Linux ARM64 | `dsh-intelligence-check-linux-arm64.tgz` |
+| Windows x86-64 | `dsh-intelligence-check-windows-amd64.tgz` |
+
+每个包只含本平台 `bin/quality-check`（Windows 为 `.exe`）。插件按宿主平台优先选择包内 `bin/quality-check-<platform>-<arch>`，发行包内回退到 `bin/quality-check`；也可用 `binaryPath` 覆盖。
+
+启动后使用 `/dsh-intelligence-check` 命令，或在同一宿主打开 `/dsh-intelligence-check`，取得一次性控制台链接。后台与数据位于 `$DSH_HOME/profiles/<name>/dsh-intelligence-check/`；不同 profile 互不共享，旧版 `~/.config/dsh-intelligence-check` 数据不会被读取或改写。
+
+卸载：`dsh plugin --profile <name> remove dsh-intelligence-check`。卸载不会删除 profile 数据目录。
+
+### 开发检出
 
 ```sh
 dsh --profile <name> --from-default-profile web
@@ -36,17 +59,28 @@ dsh plugin --profile <name> add /absolute/path/to/dsh-intelligence-check
 dsh --profile <name>
 ```
 
-启动后使用 `/dsh-intelligence-check` 命令，或在同一宿主打开 `/dsh-intelligence-check`，取得一次性控制台链接。后台与数据位于 `$DSH_HOME/profiles/<name>/dsh-intelligence-check/`；不同 profile 互不共享，旧版 `~/.config/dsh-intelligence-check` 数据不会被读取或改写。
-
 ### 从源码构建
 
-需要 Go `1.26` 工具链：
+需要 Go `1.26` 工具链；只有维护者构建发行包时需要：
 
 ```sh
 go build -o bin/quality-check ./cmd/quality-check
 ```
 
-插件按宿主平台选择 `bin/quality-check-<platform>-<arch>`，也可通过插件配置 `binaryPath` 指向本地构建的后台。最终发行包与五平台二进制由后续 bundle 迁移票完成。
+### 发行包与校验
+
+```sh
+node scripts/build-release.mjs
+node scripts/package-check.mjs
+```
+
+产物在 `dist/`：五个平台的 `quality-check-<platform>-<arch>` 后台、官方 bundle tarball、`manifest.json` 与 `SHA256SUMS`。校验：
+
+```sh
+cd dist && shasum -a 256 -c SHA256SUMS
+```
+
+`manifest.json` 记录每个产物的平台、大小与 SHA-256。本仓库不推送、不发布 npm、不上架插件市场；当前只在 macOS arm64 上执行真实平台安装，其余平台产物由交叉编译生成并通过布局与校验检查。
 
 ## 首次配置
 
@@ -187,10 +221,11 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 ## 限制与兼容性
 
-- DSH 原生插件入口、profile 后台与退出清理已实现；宿主模型目录、`ctx.llm.stream()` 检测桥接、自动检测和最终 bundle 分发由后续迁移票完成；
+- 原生插件入口、profile 后台、退出清理与官方 bundle/五平台分发已实现；宿主模型目录、`ctx.llm.stream()` 检测桥接与自动检测由后续迁移票完成；
 - 检测结果不参与业务请求放行、拒绝、暂停或模型切换；
 - 当前控制台的网关 Key 需要有权限调用 `/v1/models` 和 `/v1/chat/completions`，直至宿主模型桥接替换该配置；
-- 发行脚本生成的五个平台包仍需随最终 bundle 票刷新已验证的后台二进制；
+- 五个平台的发行包由当前源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装，其余平台未在本机运行；
+- 最终整体验收由 Issue #11 使用最终集成源码重新生成产物。
 - Cloudflare Quick Tunnel 是临时通道，不保证公网可用性或稳定性；DSH 原生入口未接线。
 
 ## 开发与验收
@@ -208,6 +243,8 @@ node --test plugin/*.test.mjs
 ```sh
 node scripts/build-release.mjs
 node scripts/package-check.mjs
+node scripts/install-check.mjs
+DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-profile-check.mjs
 ```
 
 可选的集成检查：
@@ -215,7 +252,6 @@ node scripts/package-check.mjs
 ```sh
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-profile-check.mjs
 node scripts/plugin-check.mjs
-node scripts/install-check.mjs
 node scripts/cloudflare-check.mjs
 node scripts/browser-check.mjs
 node scripts/auth-browser-check.mjs
@@ -223,9 +259,11 @@ node scripts/auth-browser-check.mjs
 
 其中：
 
-- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生插件加载、宿主入口、同 profile 共享、跨 profile 隔离与退出清理；`DSH_BINARY` 可指定 DSH 可执行文件；
+- `build-release.mjs` 交叉编译五个平台后台，用 `npm pack` 生成每平台只含本平台后台的官方 bundle tarball，并写入 `manifest.json` 与 `SHA256SUMS`；
+- `package-check.mjs` 检查包标识、`dsh.bundle` 格式、图标大小、每平台布局、可执行位、checksum 与无 Go 源码；
+- `install-check.mjs` 解压当前平台发行包并验证插件可启动、签发控制台；
+- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生插件加载、宿主入口、同 profile 共享、跨 profile 隔离、退出清理与卸载；`DSH_BINARY` 可指定 DSH 可执行文件，`DSH_PLUGIN_PACKAGE` 可指定要安装的 tarball 或检出目录；
 - `plugin-check.mjs` 验证已安装包的原生插件启动、管理链接和清理；
-- `install-check.mjs` 验证发行包解压后可加载；
 - `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭；
 - `browser-check.mjs` 需要 Playwright，可通过 `PLAYWRIGHT_MODULE` 指定模块位置。
 - `auth-browser-check.mjs` 使用真实浏览器验证从外部页面打开管理链接、票据重定向和会话刷新。

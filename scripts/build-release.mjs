@@ -1,27 +1,40 @@
 import { spawnSync } from 'node:child_process';
-import { mkdir, copyFile, readFile, writeFile, cp } from 'node:fs/promises';
+import { mkdir, mkdtemp, copyFile, readFile, writeFile, cp, rename, rm } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 
 const root=path.resolve(import.meta.dirname,'..');
+const dist=path.join(root,'dist');
 const platforms=[['linux','amd64'],['linux','arm64'],['darwin','amd64'],['darwin','arm64'],['windows','amd64']];
 const {version}=JSON.parse(await readFile(path.join(root,'package.json'),'utf8'));
-const manifest={version,artifacts:[]};
+const artifacts=[];
+await mkdir(dist,{recursive:true});
 for(const [goos,goarch] of platforms){
- const name=`quality-check-${goos}-${goarch}${goos==='windows'?'.exe':''}`;
- const output=path.join(root,'dist',name);await mkdir(path.dirname(output),{recursive:true});
+ const suffix=goos==='windows'?'.exe':'';
+ const name=`quality-check-${goos}-${goarch}${suffix}`;
+ const output=path.join(dist,name);
  const result=spawnSync('go',['build','-trimpath','-ldflags=-s -w','-o',output,'./cmd/quality-check'],{cwd:root,env:{...process.env,CGO_ENABLED:'0',GOOS:goos,GOARCH:goarch},stdio:'inherit'});
  if(result.status!==0)throw Error(`Build failed: ${name}`);
- await mkdir(path.join(root,'bin'),{recursive:true});await copyFile(output,path.join(root,'bin',name));
- const bytes=await readFile(output);manifest.artifacts.push({name,goos,goarch,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});
- const bundle=path.join(root,'dist',`dsh-intelligence-check-${goos}-${goarch}`);await mkdir(path.join(bundle,'bin'),{recursive:true});
- for(const entry of ['plugin','cordis.patch.yml','assets','third_party','package.json','README.md','LICENSE'])await cp(path.join(root,entry),path.join(bundle,entry),{recursive:true});
- await copyFile(output,path.join(bundle,'bin',goos==='windows'?'quality-check.exe':'quality-check'));
- const archive=path.basename(bundle)+'.tgz';
- const packed=spawnSync('tar',['-czf',path.join(root,'dist',archive),'-C',path.join(root,'dist'),path.basename(bundle)],{stdio:'inherit'});if(packed.status!==0)throw Error('Archive failed');
- const packedBytes=await readFile(path.join(root,'dist',archive));manifest.artifacts.push({name:archive,goos,goarch,size:packedBytes.length,sha256:createHash('sha256').update(packedBytes).digest('hex')});
+ await mkdir(path.join(root,'bin'),{recursive:true});
+ await copyFile(output,path.join(root,'bin',name));
+ const bytes=await readFile(output);
+ artifacts.push({name,goos,goarch,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});
+ const stage=await mkdtemp(path.join(os.tmpdir(),`dsh-ic-${goos}-${goarch}-`));
+ for(const entry of ['plugin','cordis.patch.yml','assets','third_party','package.json','README.md','LICENSE'])await cp(path.join(root,entry),path.join(stage,entry),{recursive:true});
+ await mkdir(path.join(stage,'bin'),{recursive:true});
+ await copyFile(output,path.join(stage,'bin',`quality-check${suffix}`));
+ const packed=spawnSync(process.platform==='win32'?'npm.cmd':'npm',['pack',stage,'--pack-destination',dist,'--silent'],{cwd:root,encoding:'utf8'});
+ if(packed.status!==0)throw Error(`Package failed: ${name}\n${packed.stderr}`);
+ const produced=packed.stdout.trim().split('\n').pop();
+ const archive=`dsh-intelligence-check-${goos}-${goarch}.tgz`;
+ await rename(path.join(dist,produced),path.join(dist,archive));
+ await rm(stage,{recursive:true,force:true});
+ const packedBytes=await readFile(path.join(dist,archive));
+ artifacts.push({name:archive,goos,goarch,size:packedBytes.length,sha256:createHash('sha256').update(packedBytes).digest('hex')});
 }
-await writeFile(path.join(root,'dist','manifest.json'),JSON.stringify(manifest,null,2)+'\n');
+await writeFile(path.join(dist,'manifest.json'),JSON.stringify({version,artifacts},null,2)+'\n');
+await writeFile(path.join(dist,'SHA256SUMS'),artifacts.map(item=>`${item.sha256}  ${item.name}`).join('\n')+'\n');
 const local=platforms.find(([os,arch])=>os===({win32:'windows'}[process.platform]||process.platform)&&arch===({x64:'amd64',arm64:'arm64'}[process.arch]));
-if(local){await mkdir(path.join(root,'bin'),{recursive:true});await copyFile(path.join(root,'dist',`quality-check-${local[0]}-${local[1]}${local[0]==='windows'?'.exe':''}`),path.join(root,'bin',local[0]==='windows'?'quality-check.exe':'quality-check'));}
-console.log('Release binaries and SHA-256 manifest generated in dist/');
+if(local){await mkdir(path.join(root,'bin'),{recursive:true});await copyFile(path.join(dist,`quality-check-${local[0]}-${local[1]}${local[0]==='windows'?'.exe':''}`),path.join(root,'bin',local[0]==='windows'?'quality-check.exe':'quality-check'));}
+console.log('Release bundles, platform binaries and SHA-256 checksums generated in dist/');

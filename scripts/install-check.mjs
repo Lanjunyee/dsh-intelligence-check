@@ -6,12 +6,25 @@ import assert from 'node:assert/strict';
 const root=path.resolve(import.meta.dirname,'..');
 const platform={win32:'windows'}[process.platform]||process.platform;
 const arch={x64:'amd64',arm64:'arm64'}[process.arch];
+const suffix=platform==='windows'?'.exe':'';
 const name=`dsh-intelligence-check-${platform}-${arch}`;
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'quality-install-'));
 try{
  const unpack=spawnSync('tar',['-xzf',path.join(root,'dist',name+'.tgz'),'-C',dir],{stdio:'inherit'});assert.equal(unpack.status,0);
- const installed=path.join(dir,name);
+ const installed=path.join(dir,'package');
+ const pkg=JSON.parse(await fs.readFile(path.join(installed,'package.json'),'utf8'));
+ assert.equal(pkg.name,'dsh-intelligence-check');assert.equal(pkg.license,'MIT');assert.equal(pkg.magpie,undefined);
+ assert.equal(pkg.dsh.bundle.patch,'./cordis.patch.yml');
+ assert.deepEqual(pkg.dsh.bundle.platforms,['darwin','linux','win32']);
+ assert.equal(pkg.engines.dsh,'>=0.2.0 <0.3.0');
+ assert.equal(pkg.icon,'./assets/plugin-icon.png');
+ const binary=path.join(installed,'bin',`quality-check${suffix}`);
+ const mode=(await fs.stat(binary)).mode;
+ assert.ok(mode&0o111,'发行包后台二进制没有可执行权限');
+ await fs.access(path.join(installed,'plugin','index.mjs'));
+ await fs.access(path.join(installed,'cordis.patch.yml'));
+ await fs.access(path.join(installed,'third_party','modeltrace','LICENSE'));
+ await assert.rejects(fs.access(path.join(installed,'go.mod')),'发行包不应依赖 Go 源码');
  const check=spawnSync(process.execPath,[path.join(root,'scripts/plugin-check.mjs')],{env:{...process.env,PLUGIN_ROOT:installed},stdio:'inherit'});assert.equal(check.status,0);
- const pkg=JSON.parse(await fs.readFile(path.join(installed,'package.json'),'utf8'));assert.equal(pkg.magpie,undefined);assert.equal(pkg.dsh.bundle.patch,'./cordis.patch.yml');
- console.log('PASS: extracted release package loads as a native DSH bundle entry');
+ console.log('PASS: 平台发行包解压后自带可执行后台、官方 bundle 元数据完整且无需 Go，插件可启动并签发控制台');
 }finally{await fs.rm(dir,{recursive:true,force:true})}

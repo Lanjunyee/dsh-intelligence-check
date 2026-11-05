@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {execFileSync, spawn, spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -11,6 +11,7 @@ const suffix = process.platform === 'win32' ? '.exe' : '';
 const localBinary = path.join(root, 'bin', `quality-check${suffix}`);
 const platformBinary = path.join(root, 'bin', `quality-check-${({win32: 'windows'})[process.platform] || process.platform}-${({x64: 'amd64', arm64: 'arm64'})[process.arch] || process.arch}${suffix}`);
 const backend = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY || (existsSync(localBinary) ? localBinary : platformBinary);
+const packageSpec = process.env.DSH_PLUGIN_PACKAGE || root;
 assert.ok(existsSync(backend), `缺少后台二进制，请先构建：go build -o bin/quality-check ./cmd/quality-check（或设置 DSH_INTELLIGENCE_CHECK_TEST_BINARY）`);
 const home = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-home-'));
 const work = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-work-'));
@@ -25,10 +26,23 @@ function dshRun(args) {
 async function installProfile(name) {
   const init = dshRun(['--profile', name, '--from-default-profile', 'web', '--dump-config']);
   assert.equal(init.status, 0, init.stdout + init.stderr);
-  const added = dshRun(['plugin', '--profile', name, 'add', root]);
+  const added = dshRun(['plugin', '--profile', name, 'add', packageSpec]);
   assert.equal(added.status, 0, added.stdout + added.stderr);
-  await writeFile(path.join(home, 'profiles', name, 'cordis.patch.yml'),
-    `- id: dsh-intelligence-check\n  config:\n    binaryPath: ${JSON.stringify(backend)}\n`);
+  if (process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY) {
+    await writeFile(path.join(home, 'profiles', name, 'cordis.patch.yml'),
+      `- id: dsh-intelligence-check\n  config:\n    binaryPath: ${JSON.stringify(backend)}\n`);
+  }
+}
+
+async function uninstallProfile(name) {
+  const removed = dshRun(['plugin', '--profile', name, 'remove', 'dsh-intelligence-check']);
+  assert.equal(removed.status, 0, removed.stdout + removed.stderr);
+  const profile = JSON.parse(await readFile(path.join(home, 'profiles', name, 'package.json'), 'utf8'));
+  assert.equal(profile.dependencies?.['dsh-intelligence-check'], undefined, '卸载后 profile 依赖仍在');
+  assert.ok(!profile.dsh?.profile?.bundles?.includes('dsh-intelligence-check'), '卸载后 bundle 层仍在');
+  const dump = dshRun(['--profile', name, '--dump-config']);
+  assert.equal(dump.status, 0, dump.stdout + dump.stderr);
+  assert.ok(!dump.stdout.includes('# == dsh-intelligence-check'), '卸载后配置仍包含插件层');
 }
 
 async function bootProfile(name) {
@@ -144,7 +158,8 @@ try {
   for (let i = 0; i < 50 && (processes(dataA).length || processes(dataB).length); i++) await wait(100);
   assert.equal(processes(dataA).length + processes(dataB).length, 0, '宿主退出后残留后台进程');
   await assert.rejects(fetch(a.origin() + '/health'));
-  console.log(`PASS: DSH ${version} 隔离 profile 加载、宿主入口、同 profile 共享、跨 profile 隔离与退出清理`);
+  await uninstallProfile('check-b');
+  console.log(`PASS: DSH ${version} 隔离 profile 安装 ${path.basename(packageSpec)}、宿主入口、同 profile 共享、跨 profile 隔离、退出清理与卸载`);
 } finally {
   for (const host of hosts) await stopHost(host);
   await rm(home, {recursive: true, force: true});

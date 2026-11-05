@@ -1,5 +1,7 @@
 {
   "name": "dsh-intelligence-check",
+  "description": "DeepSeek Harness 原生模型质量测试与报告插件",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Lanjunyee/dsh-intelligence-check.git"
@@ -7,6 +9,7 @@
   "version": "0.3.0",
   "type": "module",
   "main": "./plugin/index.mjs",
+  "icon": "./assets/plugin-icon.png",
   "files": [
     "plugin",
     "cordis.patch.yml",
@@ -18,12 +21,17 @@
   ],
   "dsh": {
     "bundle": {
-      "patch": "./cordis.patch.yml"
+      "patch": "./cordis.patch.yml",
+      "platforms": ["darwin", "linux", "win32"]
     }
+  },
+  "engines": {
+    "dsh": ">=0.2.0 <0.3.0"
   },
   "scripts": {
     "test": "go test -race ./...",
     "test:plugin": "node --test plugin/*.test.mjs",
+    "test:package": "node scripts/package-check.mjs",
     "test:dsh-profile": "node scripts/dsh-profile-check.mjs",
     "build:release": "node scripts/build-release.mjs",
     "test:install": "node scripts/install-check.mjs"
