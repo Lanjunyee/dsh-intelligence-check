@@ -12,14 +12,6 @@ try{
  const unpack=spawnSync('tar',['-xzf',path.join(root,'dist',name+'.tgz'),'-C',dir],{stdio:'inherit'});assert.equal(unpack.status,0);
  const installed=path.join(dir,name);
  const check=spawnSync(process.execPath,[path.join(root,'scripts/plugin-check.mjs')],{env:{...process.env,PLUGIN_ROOT:installed},stdio:'inherit'});assert.equal(check.status,0);
- const pkg=JSON.parse(await fs.readFile(path.join(installed,'package.json'),'utf8'));assert.equal(pkg.magpie.middleware,undefined);
- if(process.env.MAGPIE_BINARY){
-  const env={...process.env,HOME:dir,XDG_CONFIG_HOME:path.join(dir,'config'),XDG_CACHE_HOME:path.join(dir,'cache')};
-  const registration=spawnSync(process.env.MAGPIE_BINARY,['plugin','add',installed],{env,encoding:'utf8',timeout:90000});
-  assert.equal(registration.status,0,registration.stdout+registration.stderr);
-  const saved=JSON.parse(await fs.readFile(path.join(dir,'config','magpie','plugins.json'),'utf8'));assert.ok(saved.plugins.some(p=>p.spec===installed));
-  const listing=spawnSync(process.env.MAGPIE_BINARY,['plugin'],{env,encoding:'utf8',timeout:90000});assert.equal(listing.status,0,listing.stdout+listing.stderr);assert.match(listing.stdout+listing.stderr,/dsh-intelligence-check/);
-  console.log('PASS: real Magpie registers extracted package and recognizes plugin');
- }
- console.log('PASS: extracted release plugin starts without Go, issues management tickets, and cleans up with host');
+ const pkg=JSON.parse(await fs.readFile(path.join(installed,'package.json'),'utf8'));assert.equal(pkg.magpie,undefined);assert.equal(pkg.dsh.bundle.patch,'./cordis.patch.yml');
+ console.log('PASS: extracted release package loads as a native DSH bundle entry');
 }finally{await fs.rm(dir,{recursive:true,force:true})}

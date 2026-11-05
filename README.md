@@ -4,20 +4,20 @@
 
 项目正在迁移为 DeepSeek Harness 原生模型质量测试与报告插件，目标是复用宿主模型配置与凭据，保留 Go 后端和独立网页控制台，检测结果不阻断业务请求。迁移设计见 [设计文档](docs/dsh-migration.md)，实现规格见 [Issue #1](https://github.com/Lanjunyee/dsh-intelligence-check/issues/1)。
 
-**当前状态：已完成项目重命名与业务门禁解耦，DSH 宿主适配尚未实现。以下安装与配置说明对应当前的 Magpie 实现，不代表已经支持 DSH。**
+**当前状态：已完成业务门禁解耦与 DSH 原生插件入口（Issue #3）。插件按 profile 启动 Go 后台、提供宿主控制台入口并随宿主退出清理；宿主模型目录与检测调用桥接、自动检测和最终 bundle 分发仍由后续迁移票完成。**
 
-当前实现是 Magpie 插件，对指定的模型执行主动质量检测并保存报告；检测运行、失败或异常结果均不拦截业务请求，也不改写业务模型路由。
+当前实现是 DSH 原生 Cordis 插件，对指定的模型执行主动质量检测并保存报告；检测运行、失败或异常结果均不拦截业务请求，也不改写业务模型路由。
 
 项目由两部分组成：
 
-- **Magpie 插件**：`plugin/index.mjs` 负责启动后台、注册控制台入口和读取 Magpie 配置。
-- **Go 后台**：`cmd/quality-check` 提供本机管理 API、SQLite 状态存储、模型检测和临时远程控制台。管理页面嵌入在 Go 二进制中。
+- **DSH 插件**：`plugin/index.mjs` 按 profile 启动 Go 后台，注册控制台命令与同源入口，并在卸载时回收后台。
+- **Go 后台**：`cmd/quality-check` 提供本机管理 API、SQLite 状态存储、模型检测和临时远程控制台。管理页面嵌入在 Go 二进制中。控制台的模型目录与检测连接仍使用现有网关配置，宿主模型桥接由后续迁移票接入。
 
 ## 工作流程
 
 ```text
 控制台 -> 手动质量检测 -> 模型网关 -> 保存回答、评估与人工评审
-业务客户端 -> Magpie -> 上游模型（不经过检测结果判断）
+业务客户端 -> DSH -> 上游模型（不经过检测结果判断）
 ```
 
 检测是主动测试与报告功能。目标可以加入监测范围，也可以随时手动运行任意题目；检测状态和结果不影响业务请求是否发往上游。
@@ -26,37 +26,17 @@
 
 ## 安装
 
-### 从 Magpie 的安装框添加
+### 在 DSH profile 中安装
 
-在“已有想装的？”输入框填写：
-
-```text
-github:Lanjunyee/dsh-intelligence-check
-```
-
-仓库包含五个平台的 Go 二进制，插件会按 Magpie 所在机器的系统和架构选择。
-供应商显示名为 **dsh-intelligence-check**。更新后请重新安装插件并重新打开管理入口。
-
-### 使用发行包
-
-发行包在 `dist/` 中，按平台提供完整插件目录和已编译的 Go 二进制：
-
-| 平台 | 文件 |
-| --- | --- |
-| Linux x86_64 | `dsh-intelligence-check-linux-amd64.tgz` |
-| Linux ARM64 | `dsh-intelligence-check-linux-arm64.tgz` |
-| macOS Intel | `dsh-intelligence-check-darwin-amd64.tgz` |
-| macOS Apple Silicon | `dsh-intelligence-check-darwin-arm64.tgz` |
-| Windows x86_64 | `dsh-intelligence-check-windows-amd64.tgz` |
-
-解压后，把解压出的**完整目录**添加到 Magpie：
+包内声明 `dsh.bundle` 并插入原生 Cordis 插件行。开发检出可直接安装到隔离 profile：
 
 ```sh
-tar -xzf dsh-intelligence-check-darwin-arm64.tgz
-magpie plugin add /absolute/path/to/dsh-intelligence-check-darwin-arm64
+dsh --profile <name> --from-default-profile web
+dsh plugin --profile <name> add /absolute/path/to/dsh-intelligence-check
+dsh --profile <name>
 ```
 
-安装目录需要保持固定并可写。发行包已经包含对应平台的 Go 二进制，运行机器不需要安装 Go 或 Node.js。
+启动后使用 `/dsh-intelligence-check` 命令，或在同一宿主打开 `/dsh-intelligence-check`，取得一次性控制台链接。后台与数据位于 `$DSH_HOME/profiles/<name>/dsh-intelligence-check/`；不同 profile 互不共享，旧版 `~/.config/dsh-intelligence-check` 数据不会被读取或改写。
 
 ### 从源码构建
 
@@ -64,27 +44,20 @@ magpie plugin add /absolute/path/to/dsh-intelligence-check-darwin-arm64
 
 ```sh
 go build -o bin/quality-check ./cmd/quality-check
-magpie plugin add /absolute/path/to/dsh-intelligence-check
 ```
 
-开发目录需要包含 `plugin/`、`bin/quality-check`、`package.json` 和 `third_party/`。Magpie 主进程（桌面应用、`magpie web` 或 `magpie serve`）必须保持运行；插件后台跟随宿主进程生命周期。
+插件按宿主平台选择 `bin/quality-check-<platform>-<arch>`，也可通过插件配置 `binaryPath` 指向本地构建的后台。最终发行包与五平台二进制由后续 bundle 迁移票完成。
 
 ## 首次配置
 
-1. 在 Magpie 插件入口打开“本机质量检测控制台”。
+1. 在 DSH 会话中执行 `/dsh-intelligence-check`，或打开宿主同源入口 `/dsh-intelligence-check`，取得一次性控制台链接。
 2. 点击右上角设置图标，在“连接与预算”中确认网关 URL、Key 和每日请求上限，保存后会验证连接。
 3. 点击“刷新模型”，选择完整模型 ID，例如 `provider/model`，添加检测目标。
 4. 在质量题库中选择模型和题目，手动运行检测并查看回答与评估结果。
 
 检测目标默认只用于手动运行；加入监测范围的开关不影响业务请求。
 
-插件会优先通过以下方式发现本机网关：
-
-- `MAGPIE_ADDR` 环境变量；
-- `$XDG_CONFIG_HOME/magpie/settings.json` 中的监听端口；
-- 默认地址 `http://127.0.0.1:3425`。
-
-发现通过回环地址访问网关，并用 Key `magpie` 请求 `/v1/models` 验证连接。`0.0.0.0:端口`、`[::]:端口` 和 `:端口` 会转换为对应的本机地址。启动时在后台发现，不阻塞 Magpie 初始化；网关尚未就绪时每 5 秒重试。远程地址或其他 Key 需要在控制台手动填写。已有配置不会被自动覆盖。
+控制台的模型目录与检测调用尚未迁移到宿主模型目录和 `ctx.llm.stream()`，当前仍使用连接设置中的网关地址与 Key；该迁移由后续票完成。
 
 如果仍提示“请配置 Magpie 网关 URL 和 Key”，点击连接设置，填写 **Magpie 所在机器**可访问的网关地址，例如 `http://127.0.0.1:3425`，以及网关 Key（本机默认 `magpie`），再保存。它不是 Cloudflare 控制台域名，也不是上游供应商地址。Docker 中网关不在同一容器时，请填写容器可访问的实际地址与 Key。
 
@@ -94,7 +67,7 @@ magpie plugin add /absolute/path/to/dsh-intelligence-check
 
 ## 远程控制台
 
-选择“打开临时远程控制台（Cloudflare）”后，插件会启动 Cloudflare Quick Tunnel，把本机管理页面临时暴露为 HTTPS 地址：
+DSH 原生入口目前只签发本机回环控制台链接；Go 后台仍保留临时 Cloudflare 通道接口，但本票未在 DSH 插件中提供对应入口。以下行为仅适用于直接调用该接口的既有检查：
 
 - 一次性 `/open/...` 链接有效 10 分钟；
 - 浏览器会话最长 30 分钟；
@@ -198,39 +171,27 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 ## 插件选项
 
-可以在 Magpie 插件配置中传入：
+可以在 profile 的 `cordis.patch.yml` 中为插件行传入：
 
-```json
-{
-  "dataDir": "/srv/dsh-intelligence-check/data",
-  "gatewayURL": "http://127.0.0.1:3425",
-  "gatewayKey": "magpie",
-  "binaryPath": "/srv/dsh-intelligence-check/bin/quality-check",
-  "cloudflaredPath": "/usr/local/bin/cloudflared",
-  "autoInstallCloudflared": true
-}
+```yaml
+- id: dsh-intelligence-check
+  config:
+    binaryPath: /srv/dsh-intelligence-check/bin/quality-check
 ```
 
-字段说明：
+- `binaryPath`：指定 Go 后台二进制；省略时按平台选择包内 `bin/quality-check-<platform>-<arch>`。
 
-- `dataDir`：SQLite、检测记录和 Cloudflare 缓存目录。默认 `~/.config/dsh-intelligence-check`；
-- `gatewayURL`、`gatewayKey`：用于首次自动连接配置，不覆盖控制台已有设置；
-- `binaryPath`：指定 Go 后台二进制；
-- `cloudflaredPath`：指定官方 `cloudflared`；
-- `autoInstallCloudflared`：设为 `false` 时禁止自动下载 Cloudflare 客户端。
+数据目录固定为当前 profile 的 `dsh-intelligence-check/` 子目录，不接受覆盖，以保证同 profile 共享、跨 profile 隔离。停用、退出或重启不会清除数据；卸载插件也不会自动删除数据目录，请按需手动备份或清理。
 
-数据目录会以私有权限创建，SQLite 中保存网关凭据、历史结果和检测目标。停用、退出或重启不会清除数据；卸载插件也不会自动删除数据目录，请按需手动备份或清理。
-
-同一个 `dataDir` 只允许一个检测后台运行。多个 Magpie 实例必须使用独立的插件目录和 `dataDir`。
+同一个 profile 只启动一个检测后台，该 profile 的所有会话共享它。不同 profile 使用各自的数据目录与后台进程。
 
 ## 限制与兼容性
 
-- 当前适配仍依赖 Magpie 的插件系统；DSH 原生插件接入由后续迁移票实现；
+- DSH 原生插件入口、profile 后台与退出清理已实现；宿主模型目录、`ctx.llm.stream()` 检测桥接、自动检测和最终 bundle 分发由后续迁移票完成；
 - 检测结果不参与业务请求放行、拒绝、暂停或模型切换；
-- 网关 Key 需要有权限调用 `/v1/models` 和 `/v1/chat/completions`；
-- 检测使用非流式或流式 Chat Completions，由 Magpie 负责上游协议转换；
-- 发行脚本生成 Linux、macOS 和 Windows 的交叉编译包，实际部署仍需检查网络、文件权限和 Magpie 版本；
-- Cloudflare Quick Tunnel 是临时通道，不保证公网可用性或稳定性。
+- 当前控制台的网关 Key 需要有权限调用 `/v1/models` 和 `/v1/chat/completions`，直至宿主模型桥接替换该配置；
+- 发行脚本生成的五个平台包仍需随最终 bundle 票刷新已验证的后台二进制；
+- Cloudflare Quick Tunnel 是临时通道，不保证公网可用性或稳定性；DSH 原生入口未接线。
 
 ## 开发与验收
 
@@ -252,9 +213,9 @@ node scripts/package-check.mjs
 可选的集成检查：
 
 ```sh
-MAGPIE_BINARY=/absolute/path/to/magpie MAGPIE_BUN=/absolute/path/to/bun node scripts/gateway-integration.mjs
-MAGPIE_BINARY=/absolute/path/to/magpie node scripts/install-check.mjs
+DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-profile-check.mjs
 node scripts/plugin-check.mjs
+node scripts/install-check.mjs
 node scripts/cloudflare-check.mjs
 node scripts/browser-check.mjs
 node scripts/auth-browser-check.mjs
@@ -262,9 +223,10 @@ node scripts/auth-browser-check.mjs
 
 其中：
 
-- `gateway-integration.mjs` 验证真实 Magpie 管理页面加载完整插件后自动发现、验证并保存网关；需要 Node.js 24，`MAGPIE_BUN` 指向已有 Bun，测试使用独立的临时配置；
-- `install-check.mjs` 验证发行包解压、插件注册和宿主退出清理；
-- `cloudflare-check.mjs` 验证临时 HTTPS 入口、会话交换和关闭；
+- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生插件加载、宿主入口、同 profile 共享、跨 profile 隔离与退出清理；`DSH_BINARY` 可指定 DSH 可执行文件；
+- `plugin-check.mjs` 验证已安装包的原生插件启动、管理链接和清理；
+- `install-check.mjs` 验证发行包解压后可加载；
+- `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭；
 - `browser-check.mjs` 需要 Playwright，可通过 `PLAYWRIGHT_MODULE` 指定模块位置。
 - `auth-browser-check.mjs` 使用真实浏览器验证从外部页面打开管理链接、票据重定向和会话刷新。
 
@@ -276,7 +238,9 @@ node scripts/auth-browser-check.mjs
 cmd/quality-check/       Go 后台入口
 internal/check/          状态、检测传输边界、HTTP 控制台和存储
 internal/check/web/      嵌入 Go 二进制的管理页面
-plugin/index.mjs         Magpie 插件入口
+plugin/index.mjs         DSH 原生 Cordis 插件入口
+plugin/backend.mjs       Go 后台进程启动、控制台链接签发与退出回收
+cordis.patch.yml         DSH bundle 的插件行
 plugin/cloudflared-runtime.mjs  Cloudflare 客户端发现、下载和校验
 scripts/                 构建、集成和客户端验收脚本
 third_party/cloudflared/ Cloudflare 客户端许可文件

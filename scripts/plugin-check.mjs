@@ -1,35 +1,47 @@
-import {spawn} from 'node:child_process';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import os from 'node:os';
 import assert from 'node:assert/strict';
-import http from 'node:http';
-const root=process.env.PLUGIN_ROOT||path.resolve(import.meta.dirname,'..');const dir=await fs.mkdtemp(path.join(os.tmpdir(),'quality-plugin-'));
-await fs.cp(path.join(root,'plugin'),path.join(dir,'plugin'),{recursive:true});
-const gatewayServer=http.createServer((req,res)=>{
- assert.equal(req.url,'/v1/models');assert.equal(req.headers.authorization,'Bearer magpie');
- res.setHeader('content-type','application/json');res.end('{"data":[]}');
-});
-const gatewayPort=await new Promise(resolve=>{const reservation=http.createServer();reservation.listen(0,'127.0.0.1',()=>{const port=reservation.address().port;reservation.close(()=>resolve(port));})});
-const gateway=`http://127.0.0.1:${gatewayPort}`;
-const script=`import plugin from ${JSON.stringify('file://'+path.join(dir,'plugin/index.mjs'))};const hooks=await plugin.server({},${JSON.stringify({binaryPath:path.join(root,'bin/quality-check'),dataDir:path.join(dir,'data'),gatewayURL:gateway})});await hooks.config({});const first=await hooks.auth.methods[0].authorize();const second=await hooks.auth.methods[0].authorize();console.log(JSON.stringify({first:first.url,second:second.url}));setInterval(()=>{},1000);`;
-const p=spawn(process.execPath,['--input-type=module','-e',script],{stdio:['ignore','pipe','pipe']});let raw='';let error='';p.stderr.on('data',b=>error+=b);
-try{
- const v=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('plugin startup timeout '+error)),15000);p.stdout.on('data',b=>{raw+=b;const i=raw.indexOf('\n');if(i>=0){clearTimeout(timer);resolve(JSON.parse(raw.slice(0,i)))}});p.once('exit',()=>{clearTimeout(timer);reject(Error(error))})});
- assert.notEqual(v.first,v.second);const r=await fetch(v.first,{redirect:'manual'});assert.equal(r.status,303);const repeat=await fetch(v.first,{redirect:'manual'});assert.equal(repeat.status,401);
- await new Promise(resolve=>gatewayServer.listen(gatewayPort,'127.0.0.1',resolve));
- const cookie=r.headers.get('set-cookie').split(';')[0];
- const deadline=Date.now()+12000;
- let state;
- while(Date.now()<deadline){
-  state=await (await fetch(new URL('/api/state',v.first),{headers:{cookie}})).json();
-  if(state.gateway_configured)break;
-  await new Promise(resolve=>setTimeout(resolve,150));
- }
- assert.equal(state.gateway_configured,true,'delayed gateway not discovered');
- assert.equal(state.state.config.gateway_url,gateway);
- assert.equal(state.state.config.gateway_key,'');
- p.kill('SIGKILL');await new Promise(r=>p.once('exit',r));
- await new Promise(r=>setTimeout(r,1000));let closed=false;try{await fetch(v.second)}catch{closed=true}assert.ok(closed,'Go service survived host exit');
- console.log('PASS: plugin starts before gateway, background discovery configures delayed gateway, new tickets, host death stops Go service');
-}finally{if(p.exitCode===null&&p.signalCode===null)p.kill('SIGKILL');await new Promise(resolve=>gatewayServer.close(resolve));await fs.rm(dir,{recursive:true,force:true})}
+import {mkdtemp, rm} from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import {pathToFileURL} from 'node:url';
+
+const root = process.env.PLUGIN_ROOT || path.resolve(import.meta.dirname, '..');
+const {apply} = await import(pathToFileURL(path.join(root, 'plugin/index.mjs')));
+const dir = await mkdtemp(path.join(os.tmpdir(), 'quality-plugin-'));
+const disposers = [];
+const commands = [];
+const ctx = {
+  profileContext: {name: 'plugin-check', dir},
+  effect(fn) {
+    const dispose = fn();
+    disposers.push(dispose);
+    return dispose;
+  },
+  commands: {register(definition) {
+    commands.push(definition);
+    return () => {};
+  }},
+  get() {},
+  inject() {},
+};
+try {
+  await apply(ctx, process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
+    ? {binaryPath: process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY}
+    : {});
+  const [command] = commands;
+  assert.equal(command.name, 'dsh-intelligence-check');
+  const result = await command.handler({rawInput: '', agent: {}, attachments: [], signal: new AbortController().signal});
+  assert.equal(result.kind, 'success', result.text);
+  const url = result.text.match(/http:\/\/\S+/)[0];
+  const opened = await fetch(url, {redirect: 'manual'});
+  assert.equal(opened.status, 303);
+  const cookie = opened.headers.get('set-cookie').split(';')[0];
+  const state = await fetch(new URL('/api/state', url), {headers: {cookie}});
+  assert.equal(state.status, 200);
+  assert.deepEqual((await state.json()).state.targets, {});
+  const origin = new URL(url).origin;
+  while (disposers.length > 0) await disposers.pop()();
+  await assert.rejects(fetch(origin + '/health'));
+  console.log('PASS: native plugin starts the backend, issues an authorized console link and cleans up');
+} finally {
+  await rm(dir, {recursive: true, force: true});
+}
