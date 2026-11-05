@@ -30,6 +30,23 @@ type Model struct {
 	Group string `json:"group"`
 }
 
+// Transport is the single boundary for model catalog and generation. The
+// gateway implementation below is replaceable by a host bridge.
+type Transport interface {
+	Models(context.Context) ([]Model, error)
+	Generate(context.Context, string, string, func(string)) (string, int, error)
+}
+
+type gatewayTransport struct{ config func() Config }
+
+func (t gatewayTransport) Models(ctx context.Context) ([]Model, error) {
+	return Models(ctx, t.config())
+}
+
+func (t gatewayTransport) Generate(ctx context.Context, model, prompt string, progress func(string)) (string, int, error) {
+	return call(ctx, t.config(), model, prompt, progress)
+}
+
 func Models(ctx context.Context, c Config) ([]Model, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()

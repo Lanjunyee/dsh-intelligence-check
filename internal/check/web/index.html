@@ -24,12 +24,10 @@
 </header>
 <main id="main" tabindex="-1">
   <div id="message" class="feedback" role="alert"></div>
-  <div id="connectionNotice" class="connection-notice" hidden><span>尚未连接 Magpie 网关</span><button id="connectSettings" class="text-button">连接设置 <i data-icon="ArrowUpRight"></i></button></div>
-  <section class="overview" aria-label="监测概览">
-    <div class="stat"><span>监测模型</span><strong id="statEnabled">0</strong></div>
-    <div class="stat"><span>有效通过</span><strong id="statPassed">0</strong></div>
-    <div class="stat"><span>待处理</span><strong id="statReview">0</strong></div>
-    <div class="stat"><span>今日探针</span><strong id="statRequests">0</strong></div>
+  <div id="connectionNotice" class="connection-notice" hidden><span>尚未配置模型网关</span><button id="connectSettings" class="text-button">连接设置 <i data-icon="ArrowUpRight"></i></button></div>
+  <section class="overview" aria-label="检测概览">
+    <div class="stat"><span>监测目标</span><strong id="statEnabled">0</strong></div>
+    <div class="stat"><span>今日请求</span><strong id="statRequests">0</strong></div>
   </section>
   <nav class="tabs" role="tablist" aria-label="控制台视图">
     <button id="tab-models" role="tab" aria-selected="true" aria-controls="view-models" data-view="models"><i data-icon="Monitor"></i>模型监测<span id="targetCount" class="tab-count">0</span></button>
@@ -38,14 +36,14 @@
     <button id="tab-history" role="tab" aria-selected="false" aria-controls="view-history" tabindex="-1" data-view="history"><i data-icon="History"></i>检测记录</button>
   </nav>
   <section id="view-models" class="view" role="tabpanel" aria-labelledby="tab-models">
-    <div class="section-heading"><h2>主力模型</h2><span class="meta">通过结果有效期 15 分钟</span></div>
+    <div class="section-heading"><h2>检测目标</h2><span class="meta">检测为主动测试，不拦截业务请求</span></div>
     <form id="target" class="add-target">
       <label class="grow"><span class="sr-only">完整模型 ID</span><input name="model" list="catalog" aria-label="完整模型 ID" placeholder="provider/model" required autocomplete="off"><datalist id="catalog"></datalist></label>
       <button type="button" id="loadModels" class="secondary"><i data-icon="RefreshCw"></i><span>刷新模型</span></button>
-      <button class="primary"><i data-icon="Plus"></i><span>添加监测目标</span></button>
+      <button class="primary"><i data-icon="Plus"></i><span>添加检测目标</span></button>
     </form>
     <div class="table-wrap">
-      <table class="targets-table"><thead><tr><th>模型</th><th>状态</th><th>最近通过</th><th>今日预算</th><th class="align-right">操作</th></tr></thead><tbody id="targets"></tbody></table>
+      <table class="targets-table"><thead><tr><th>模型</th><th>今日预算</th><th class="align-right">操作</th></tr></thead><tbody id="targets"></tbody></table>
     </div>
   </section>
   <section id="view-tests" class="view" role="tabpanel" aria-labelledby="tab-tests" hidden>
@@ -67,7 +65,7 @@
     <form id="answerReview" class="answer-review" hidden>
       <div class="section-heading"><h2>人工审核</h2><span id="reviewStatus" class="meta"></span></div>
       <div class="review-fields"><label>审核结论<select name="decision"><option value="pending">待确认</option><option value="accepted">确认通过</option><option value="rejected">标记问题</option></select></label><label>审核备注<textarea name="note" rows="3" maxlength="1000" placeholder="记录判断依据或待复核的问题"></textarea></label></div>
-      <div class="dialog-actions"><span class="meta">审核仅记录评价，不改变模型门禁。</span><button class="primary"><i data-icon="Check"></i>保存审核</button></div>
+      <div class="dialog-actions"><span class="meta">审核仅记录评价，不影响模型调用。</span><button class="primary"><i data-icon="Check"></i>保存审核</button></div>
       <p id="reviewMessage" class="inline-state" role="status"></p>
     </form>
     <div class="test-content">
@@ -82,7 +80,7 @@
       <label>检测批次<select id="traceBatch" aria-label="指纹检测批次"></select></label>
       <button id="traceRun" class="primary"><i data-icon="Fingerprint"></i><span>运行三条指纹挑战</span></button>
     </div>
-    <p class="disclaimer">概率仅表示当前候选库内的相似程度，不证明模型身份；指纹结果不改变门禁。</p>
+    <p class="disclaimer">概率仅表示当前候选库内的相似程度，不证明模型身份；指纹结果不影响模型调用。</p>
     <div id="traceResults" aria-live="polite"></div>
   </section>
   <section id="view-history" class="view" role="tabpanel" aria-labelledby="tab-history" hidden>
@@ -107,8 +105,6 @@
       <label>Magpie 网关 URL<input name="gateway_url" type="url" placeholder="http://127.0.0.1:3425" required autocomplete="off"></label>
       <label>网关 Key<span class="secret-field"><input name="gateway_key" autocomplete="off" placeholder="本机默认：magpie"><button type="button" id="showKey" class="icon-button" data-icon="Eye" aria-label="显示输入的 Key" data-tooltip="显示输入的 Key"></button></span></label>
       <p id="keyState" class="field-note"></p>
-      <label>Magpie 日志绝对路径<input name="log_path" placeholder="/srv/magpie/gateway.log" autocomplete="off"></label>
-      <p id="logHealth" class="field-note"></p>
       <label>每日每模型请求上限<input name="daily_limit" type="number" min="1" max="10000" value="120" required></label>
     </div>
     <div class="dialog-actions"><button type="button" id="checkConnection" class="secondary"><i data-icon="Activity"></i>验证连接</button><button class="primary"><i data-icon="Check"></i>保存设置</button></div>

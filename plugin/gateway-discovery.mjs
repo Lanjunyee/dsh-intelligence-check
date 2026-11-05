@@ -30,7 +30,7 @@ export async function discoverGateway(options = {}, env = process.env, fetcher =
     if (!response.ok) return undefined;
     const data = await response.json();
     if (!Array.isArray(data.data)) return undefined;
-    return { gateway_url: url, gateway_key: key, log_path: options.logPath || '', daily_limit: 120 };
+    return { gateway_url: url, gateway_key: key, daily_limit: 120 };
   } catch { return undefined; }
 }
 

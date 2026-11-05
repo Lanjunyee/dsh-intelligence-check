@@ -1,33 +1,34 @@
 package check
 
 import (
-	"path/filepath"
 	"testing"
 	"time"
 )
 
-func TestRestartRestoresProtection(t *testing.T) {
+func TestRestartMarksUnfinishedChecksUnavailable(t *testing.T) {
 	dir := t.TempDir()
-	gate := filepath.Join(dir, "gate.js")
-	s, err := New(dir, gate)
+	s, err := New(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	s.SetTarget("a/solo", true)
-	s.Action("a/solo", "hold")
-	s.Action("a/solo", "allow")
 	s.mu.Lock()
-	s.state.Targets["a/solo"].AllowUntil = time.Now().Add(-time.Minute)
-	s.saveLocked()
+	s.state.Results = append(s.state.Results, Result{ID: "running", Model: "a/solo", Prompt: "milk", Verdict: "running", Time: time.Now()})
+	if err := s.saveLocked(); err != nil {
+		t.Fatal(err)
+	}
 	s.mu.Unlock()
 	s.Close()
-	restored, err := New(dir, gate)
+	restored, err := New(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer restored.Close()
 	state, _ := restored.Snapshot()
-	if state.Targets["a/solo"].State != "review" || !state.Targets["a/solo"].Enabled {
-		t.Fatal("restart removed protection")
+	if len(state.Results) != 1 || state.Results[0].Verdict != "unavailable" || state.Results[0].Error == "" {
+		t.Fatalf("unfinished check not closed on restart: %+v", state.Results)
+	}
+	if !state.Targets["a/solo"].Enabled {
+		t.Fatal("target monitoring lost")
 	}
 }

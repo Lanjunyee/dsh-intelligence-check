@@ -54,9 +54,6 @@ func (s *Service) TriggerModelTrace(model string) error {
 		return errors.New("该模型已有检测进行中，请完成后重试")
 	}
 	cfg := s.state.Config
-	if cfg.GatewayURL == "" || cfg.GatewayKey == "" {
-		return errors.New("请配置 Magpie 网关 URL 和 Key")
-	}
 	count := 0
 	day := time.Now().UTC().Format("2006-01-02")
 	count += s.state.ClearedUsage[day][model]
@@ -79,7 +76,6 @@ func (s *Service) TriggerModelTrace(model string) error {
 		s.state.Results = s.state.Results[:start]
 		return err
 	}
-	alias := s.state.Alias
 	s.running[model] = true
 	s.wg.Add(1)
 	go func() {
@@ -87,7 +83,7 @@ func (s *Service) TriggerModelTrace(model string) error {
 		defer func() { s.mu.Lock(); delete(s.running, model); s.mu.Unlock() }()
 		for i, r := range probes {
 			ctx, cancel := context.WithTimeout(s.ctx, 180*time.Second)
-			answer, tokens, err := Call(ctx, cfg, "quality-probe/"+alias+"/"+model, r.PromptText)
+			answer, tokens, err := s.transport.Generate(ctx, model, r.PromptText, nil)
 			cancel()
 			r.Answer, r.Tokens, r.Verdict = answer, tokens, "manual"
 			if err != nil {

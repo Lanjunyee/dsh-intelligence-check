@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root = path.resolve(import.meta.dirname, '..');
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'quality-auth-'));
-const child = spawn(path.join(root, 'bin/quality-check'), ['-data', dir, '-gate', path.join(dir, 'gate.js'), '-owned']);
+const child = spawn(path.join(root, 'bin/quality-check'), ['-data', dir, '-owned']);
 let output = '';
 const info = await new Promise((resolve, reject) => {
   child.stdout.on('data', chunk => {
@@ -24,7 +24,10 @@ const source = http.createServer((req, res) => {
   res.end(`<a href="${info.url}">Open console</a>`);
 });
 await new Promise(resolve => source.listen(0, '127.0.0.1', resolve));
-const browser = await chromium.launch({ headless: true });
+const launchOptions = { headless: true };
+if (process.env.PLAYWRIGHT_CHANNEL) launchOptions.channel = process.env.PLAYWRIGHT_CHANNEL;
+if (process.env.PLAYWRIGHT_EXECUTABLE) launchOptions.executablePath = process.env.PLAYWRIGHT_EXECUTABLE;
+const browser = await chromium.launch(launchOptions);
 try {
   const page = await browser.newPage();
   await page.goto(`http://localhost:${source.address().port}`);

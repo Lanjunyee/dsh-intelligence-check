@@ -3,7 +3,6 @@ package check
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -22,7 +21,7 @@ func TestCancelQualityRequest(t *testing.T) {
 	defer up.Close()
 	s.Configure(Config{GatewayURL: up.URL, GatewayKey: "fixture", DailyLimit: 20})
 	s.SetTarget("a/solo", true)
-	if err := s.Trigger("a/solo", "milk", true); err != nil {
+	if err := s.Trigger("a/solo", "milk"); err != nil {
 		t.Fatal(err)
 	}
 	<-started
@@ -31,19 +30,18 @@ func TestCancelQualityRequest(t *testing.T) {
 	}
 	s.wg.Wait()
 	state, _ := s.Snapshot()
-	if len(state.Results) != 1 || state.Results[0].Error != "检测已取消" || state.Targets["a/solo"].State == "passed" {
-		t.Fatal(state)
+	if len(state.Results) != 1 || state.Results[0].Error != "检测已取消" {
+		t.Fatal(state.Results)
 	}
 	if s.CancelTest("a/solo") == nil {
 		t.Fatal("completed test remained cancellable")
 	}
 }
 
-func TestClearHistoryPreservesBudgetAndGate(t *testing.T) {
+func TestClearHistoryPreservesBudget(t *testing.T) {
 	s := fixture(t)
 	s.Configure(Config{GatewayURL: "http://127.0.0.1:1", GatewayKey: "fixture", DailyLimit: 1})
 	s.SetTarget("a/solo", true)
-	s.Action("a/solo", "hold")
 	s.state.Results = append(s.state.Results, Result{ID: "old", Model: "a/solo", Time: time.Now(), Answer: "private"})
 	s.running["a/solo"] = true
 	if s.ClearResults([]string{"old"}) == nil {
@@ -54,10 +52,10 @@ func TestClearHistoryPreservesBudgetAndGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	state, _ := s.Snapshot()
-	if len(state.Results) != 0 || state.Targets["a/solo"].State != "review" {
+	if len(state.Results) != 0 {
 		t.Fatal(state)
 	}
-	if err := s.Trigger("a/solo", "repeat", true); err == nil || !strings.Contains(err.Error(), "预算") {
+	if err := s.Trigger("a/solo", "repeat"); err == nil || !strings.Contains(err.Error(), "预算") {
 		t.Fatal("clearing restored budget", err)
 	}
 	var stored State
@@ -66,7 +64,7 @@ func TestClearHistoryPreservesBudgetAndGate(t *testing.T) {
 	}
 }
 
-func TestDisabledTargetAllowsManualTestsOnly(t *testing.T) {
+func TestUnmonitoredTargetAllowsManualChecks(t *testing.T) {
 	s := fixture(t)
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -75,14 +73,7 @@ func TestDisabledTargetAllowsManualTestsOnly(t *testing.T) {
 	defer up.Close()
 	s.Configure(Config{GatewayURL: up.URL, GatewayKey: "fixture", DailyLimit: 20})
 	s.SetTarget("a/solo", false)
-	if err := s.Trigger("a/solo", "repeat", false); err != nil {
-		t.Fatal(err)
-	}
-	state, _ := s.Snapshot()
-	if len(state.Results) != 0 {
-		t.Fatal("disabled target auto-tested")
-	}
-	if err := s.Trigger("a/solo", "repeat", true); err != nil {
+	if err := s.Trigger("a/solo", "repeat"); err != nil {
 		t.Fatal(err)
 	}
 	s.wg.Wait()
@@ -90,16 +81,15 @@ func TestDisabledTargetAllowsManualTestsOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.wg.Wait()
-	state, _ = s.Snapshot()
+	state, _ := s.Snapshot()
 	if len(state.Results) != 4 || state.Targets["a/solo"].Enabled {
 		t.Fatal("manual test changed monitoring")
 	}
 }
 
-func TestReviewPersistsWithoutChangingVerdictOrGate(t *testing.T) {
+func TestReviewPersistsWithoutChangingVerdict(t *testing.T) {
 	s := fixture(t)
 	s.SetTarget("a/solo", true)
-	s.Action("a/solo", "hold")
 	s.state.Results = append(s.state.Results, Result{ID: "answer", Model: "a/solo", Prompt: "repeat", Answer: "original", Verdict: "manual", Time: time.Now()})
 	if err := s.ReviewResult("answer", "accepted", "checked"); err != nil {
 		t.Fatal(err)
@@ -112,9 +102,6 @@ func TestReviewPersistsWithoutChangingVerdictOrGate(t *testing.T) {
 	if r.Answer != "original" || r.Verdict != "manual" || r.Review != "accepted" || r.ReviewNote != "checked" || r.ReviewedAt.IsZero() {
 		t.Fatal(r)
 	}
-	if stored.Targets["a/solo"].State != "review" {
-		t.Fatal("human review changed gate")
-	}
 	if s.ReviewResult("answer", "passed", "") == nil || s.ReviewResult("missing", "pending", "") == nil {
 		t.Fatal("invalid review accepted")
 	}
@@ -124,7 +111,7 @@ func TestReviewPersistsWithoutChangingVerdictOrGate(t *testing.T) {
 	}
 }
 
-func TestDeleteTargetPreservesHistoryAndRemovesGate(t *testing.T) {
+func TestDeleteTargetPreservesHistory(t *testing.T) {
 	s := fixture(t)
 	s.SetTarget("a/solo", true)
 	s.state.Results = append(s.state.Results, Result{ID: "old", Model: "a/solo", Answer: "kept"})
@@ -139,9 +126,5 @@ func TestDeleteTargetPreservesHistoryAndRemovesGate(t *testing.T) {
 	state, _ := s.Snapshot()
 	if len(state.Targets) != 0 || len(state.Results) != 1 {
 		t.Fatal("history removed or target retained")
-	}
-	gate, _ := os.ReadFile(s.gate)
-	if strings.Contains(string(gate), "a/solo") {
-		t.Fatal("deleted target remains gated")
 	}
 }

@@ -18,7 +18,7 @@ function start(options = {}) {
     const bundled = path.join(root, 'bin', `quality-check-${platform}-${arch}${suffix}`);
     const fallback = path.join(root, 'bin', `quality-check${suffix}`);
     const binary = options.binaryPath || (requireFile(bundled) ? bundled : fallback);
-    const args=['-data', options.dataDir || path.join(os.homedir(), '.config', 'dsh-intelligence-check'), '-gate', path.join(root, 'plugin', 'gate.middleware.js'),'-owned'];
+    const args=['-data', options.dataDir || path.join(os.homedir(), '.config', 'dsh-intelligence-check'),'-owned'];
     if(options.cloudflaredPath)args.push('-cloudflared',options.cloudflaredPath);
     child = spawn(binary, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     child.stdin.on('error',()=>{});

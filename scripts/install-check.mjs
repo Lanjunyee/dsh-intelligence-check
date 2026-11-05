@@ -12,7 +12,7 @@ try{
  const unpack=spawnSync('tar',['-xzf',path.join(root,'dist',name+'.tgz'),'-C',dir],{stdio:'inherit'});assert.equal(unpack.status,0);
  const installed=path.join(dir,name);
  const check=spawnSync(process.execPath,[path.join(root,'scripts/plugin-check.mjs')],{env:{...process.env,PLUGIN_ROOT:installed},stdio:'inherit'});assert.equal(check.status,0);
- const pkg=JSON.parse(await fs.readFile(path.join(installed,'package.json'),'utf8'));assert.equal(pkg.magpie.middleware,'./plugin/gate.middleware.js');
+ const pkg=JSON.parse(await fs.readFile(path.join(installed,'package.json'),'utf8'));assert.equal(pkg.magpie.middleware,undefined);
  if(process.env.MAGPIE_BINARY){
   const env={...process.env,HOME:dir,XDG_CONFIG_HOME:path.join(dir,'config'),XDG_CACHE_HOME:path.join(dir,'cache')};
   const registration=spawnSync(process.env.MAGPIE_BINARY,['plugin','add',installed],{env,encoding:'utf8',timeout:90000});

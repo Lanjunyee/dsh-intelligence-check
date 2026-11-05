@@ -1,10 +1,11 @@
 import { $, text, icon, hydrateIcons, syncSelect, dateTime, names } from './ui.js';
+import { filteredHistory, renderHistory, renderComparison, exportFilteredHistory, resetHistoryLimit, loadMoreHistory } from './history.js';
 import { renderModelTrace, runModelTrace } from '../modeltrace/panel.js';
 import { analyzeAnswer } from './answer-analysis.js';
 import { renderSVGPreview } from './svg-preview.js';
 import { renderHTMLPreview, stopHTMLPreview } from './html-preview.js';
 
-let data, polling = false, stopped = false, pollError = '', targetSignature, historySignature, historyLimit = 30;
+let data, polling = false, stopped = false, pollError = '', targetSignature;
 const config = $('#config');
 const secretType = 'pass' + 'word';
 config.elements.gateway_key.type = secretType;
@@ -27,7 +28,7 @@ async function request(path, body) {
   });
   if (!response.ok) {
     const raw = await response.text();
-    if (response.status === 401) throw Error('管理会话已失效，请从 Magpie 插件重新打开控制台。');
+    if (response.status === 401) throw Error('管理会话已失效，请从插件重新打开控制台。');
     if (/<!doctype|<html/i.test(raw)) throw Error(`控制台连接暂时不可用（HTTP ${response.status}），请稍后重试；持续失败请从插件重新打开远程入口。`);
     throw Error(raw.trim() || `请求失败（HTTP ${response.status}）`);
   }
@@ -161,43 +162,32 @@ function dayCount(model) {
   const cleared = data.state.cleared_usage?.[day] || {};
   return data.state.results.filter(r => (!model || r.model === model) && new Date(r.time).toISOString().slice(0, 10) === day).length + (model ? cleared[model] || 0 : Object.values(cleared).reduce((a, b) => a + b, 0));
 }
-function validPass(target) { return target.enabled && target.state === 'passed' && Date.now() - Date.parse(target.checked_at) < 900000; }
 function renderTargets() {
   const targets = Object.values(data.state.targets);
-  const signature = JSON.stringify([targets, data.state.results.filter(r => r.verdict === 'running').map(r => r.model), data.state.config.daily_limit, targets.map(t => [dayCount(t.model), validPass(t), Date.parse(t.allow_until) > Date.now()])]);
+  const signature = JSON.stringify([targets, data.state.results.filter(r => r.verdict === 'running').map(r => r.model), data.state.config.daily_limit, targets.map(t => dayCount(t.model))]);
   if (signature === targetSignature) return;
   targetSignature = signature;
   const rows = targets.map(target => {
     const row = document.createElement('tr');
     const model = text('td', target.model, 'model-id');
     model.dataset.label = '模型';
-    const status = text('td', '');
-    status.dataset.label = '状态';
-    const allowed = Date.parse(target.allow_until) > Date.now();
-    const label = !target.enabled ? '监测关闭' : allowed ? '限时放行' : target.state === 'passed' && !validPass(target) ? '通过已过期' : names[target.state] || target.state;
-    status.append(text('span', label, 'state ' + (target.enabled ? target.state : '')));
-    if (target.reason) status.append(text('span', target.reason, 'cell-meta'));
-    const checked = text('td', dateTime(target.checked_at));
-    checked.dataset.label = '最近通过';
     const budget = text('td', `${dayCount(target.model)} / ${data.state.config.daily_limit}`, 'numeric');
     budget.dataset.label = '今日预算 (UTC)';
     const actions = text('td', '');
     actions.dataset.label = '操作';
     const tools = text('div', '', 'actions');
-    for (const [name, action, image] of [['重新检测', 'test', 'RefreshCw'], ['放行 15 分钟', 'allow', 'Clock3'], ['暂停', 'hold', 'Pause']]) {
-      const button = text('button', '', 'icon-button');
-      button.type = 'button'; button.append(icon(image));
-      button.setAttribute('aria-label', `${name} ${target.model}`);
-      button.dataset.tooltip = name; button.title = name;
-      button.disabled = (action !== 'test' && !target.enabled) || (action === 'test' && modelRunning(target.model));
-      button.onclick = () => pending(button, async () => {
-        if (action === 'test' && !requireGateway()) return;
-        await request('/api/action', { model: target.model, action });
-        feedback(`${target.model}：${action === 'test' ? '已开始检测' : action === 'allow' ? '已放行 15 分钟' : '已暂停'}`, true);
-        await refresh();
-      });
-      tools.append(button);
-    }
+    const retest = text('button', '', 'icon-button');
+    retest.type = 'button'; retest.append(icon('RefreshCw'));
+    retest.setAttribute('aria-label', `重新检测 ${target.model}`);
+    retest.dataset.tooltip = '重新检测'; retest.title = '重新检测';
+    retest.disabled = modelRunning(target.model);
+    retest.onclick = () => pending(retest, async () => {
+      if (!requireGateway()) return;
+      await request('/api/action', { model: target.model, action: 'test' });
+      feedback(`${target.model}：已开始检测`, true);
+      await refresh();
+    });
+    tools.append(retest);
     const toggle = text('label', '', 'toggle');
     const input = document.createElement('input'); input.type = 'checkbox'; input.checked = target.enabled;
     input.setAttribute('aria-label', `监测 ${target.model}`);
@@ -209,61 +199,25 @@ function renderTargets() {
     };
     toggle.append(input, text('span', '', 'toggle-track')); tools.append(toggle); actions.append(tools);
     const remove = text('button', '', 'icon-button'); remove.append(icon('Trash2'));
-    remove.setAttribute('aria-label', `删除 ${target.model}`); remove.dataset.tooltip = '删除监测目标'; remove.disabled = modelRunning(target.model);
+    remove.setAttribute('aria-label', `删除 ${target.model}`); remove.dataset.tooltip = '删除检测目标'; remove.disabled = modelRunning(target.model);
     remove.onclick = () => {
-      if (!confirm(`删除 ${target.model}？该模型将不再受监测门禁限制，历史记录保留。`)) return;
-      pending(remove, async () => { await request('/api/target/delete', { model: target.model }); feedback('已删除监测目标，历史记录保留', true); await refresh(); });
+      if (!confirm(`删除 ${target.model}？历史记录和预算计数保留。`)) return;
+      pending(remove, async () => { await request('/api/target/delete', { model: target.model }); feedback('已删除检测目标，历史记录保留', true); await refresh(); });
     };
     tools.append(remove);
-    row.append(model, status, checked, budget, actions);
+    row.append(model, budget, actions);
     return row;
   });
   if (!rows.length) {
-    const row = text('tr', '', 'empty-row'); const cell = text('td', '添加一个模型开始监测', 'empty-state'); cell.colSpan = 5; row.append(cell); rows.push(row);
+    const row = text('tr', '', 'empty-row'); const cell = text('td', '添加一个检测目标开始测试', 'empty-state'); cell.colSpan = 3; row.append(cell); rows.push(row);
   }
   $('#targets').replaceChildren(...rows);
 }
-function filteredHistory() {
-  return [...data.state.results].reverse().filter(r => (!$('#historyModel').value || r.model === $('#historyModel').value) && (!$('#historyVerdict').value || r.verdict === $('#historyVerdict').value) && (!$('#historyPrompt').value || r.prompt === $('#historyPrompt').value) && (!$('#historyReview').value || (r.review || 'pending') === $('#historyReview').value));
-}
-function renderHistory() {
+function renderHistoryView() {
   if (!data) return;
-  syncSelect($('#historyPrompt'), [['', '全部题目'], ...data.prompts.map(p => [p.id, p.name]), ['modeltrace', 'ModelTrace']]);
-  const filtered = filteredHistory();
-  const candidates = filtered.filter(r => r.answer && r.verdict !== 'running');
-  for (const side of ['A', 'B']) syncSelect($('#compare' + side), [['', '选择回答'], ...candidates.map(r => [r.id, `${r.model} / ${r.prompt} / ${dateTime(r.time)}`])]);
-  renderComparison();
-  $('#historyCount').textContent = `${filtered.length} 条记录`;
-  $('#loadHistory').hidden = filtered.length <= historyLimit;
-  const records = filtered.slice(0, historyLimit);
-  const signature = JSON.stringify(records);
-  if (signature === historySignature) return;
-  historySignature = signature;
-  const expanded = new Set([...$('#results').querySelectorAll('details[open]')].map(d => d.dataset.id));
-  $('#results').replaceChildren(...records.map(record => {
-    const details = text('details', '', 'record'); details.dataset.id = record.id; details.open = expanded.has(record.id);
-    const summary = text('summary', '', 'history-summary');
-    summary.append(text('span', dateTime(record.time), 'record-date'), text('span', record.model, 'record-model model-id'), text('span', data.prompts.find(p => p.id === record.prompt)?.name || 'ModelTrace', 'record-type'), text('span', names[record.verdict] || record.verdict, 'state ' + record.verdict), text('span', `${record.tokens || 0} tokens`, 'record-tokens numeric'));
-    const body = text('div', '', 'record-body');
-    if (record.error) body.append(text('p', record.error, 'inline-state error'));
-    if (record.review) body.append(text('p', `人工审核：${({accepted:'确认通过', rejected:'标记问题', pending:'待确认'})[record.review]}${record.review_note ? ' / ' + record.review_note : ''}`, 'inline-state'));
-    body.append(text('pre', record.answer || (record.verdict === 'running' ? '等待回答' : '未返回回答正文')));
-    const download = text('a', '下载原始回答', 'download'); download.prepend(icon('Download'));
-    download.href = '/api/results/' + encodeURIComponent(record.id) + '/download'; body.append(download);
-    const prompt = record.prompt_text || data.prompts.find(p => p.id === record.prompt)?.text;
-    if (prompt) body.append(text('p', '提示词原文', 'prompt-label'), text('pre', prompt));
-    details.append(summary, body); return details;
-  }));
-  if (!records.length) $('#results').append(text('p', '暂无符合条件的记录', 'empty-state'));
+  renderHistory(data);
 }
-function renderComparison() {
-  for (const side of ['A', 'B']) {
-    const record = data?.state.results.find(r => r.id === $('#compare' + side).value);
-    $('#compareText' + side).textContent = record?.answer || '尚未选择回答';
-    $('#compareMeta' + side).textContent = record ? `${record.model} / ${record.prompt} / ${dateTime(record.time)} / ${record.tokens || 0} tokens / ${{accepted:'确认通过', rejected:'标记问题', pending:'待确认'}[record.review || 'pending']}${record.review_note ? ' / ' + record.review_note : ''}` : '';
-  }
-}
-$('#compareA').onchange = $('#compareB').onchange = renderComparison;
+$('#compareA').onchange = $('#compareB').onchange = () => renderComparison(data);
 async function refresh() {
   if (polling || stopped) return;
   polling = true;
@@ -276,18 +230,15 @@ async function refresh() {
     $('#health').title = data.health || '';
     $('#connectionNotice').hidden = data.gateway_configured;
     $('#keyState').textContent = data.gateway_configured ? 'Key 已保存；留空保留已保存的 Key。' : '尚未保存 Key；本机默认 Key 为 magpie。';
-    $('#logHealth').textContent = data.log_health;
-    if (!configDirty) for (const key of ['gateway_url', 'log_path', 'daily_limit']) config.elements[key].value = data.state.config[key];
+    if (!configDirty) for (const key of ['gateway_url', 'daily_limit']) config.elements[key].value = data.state.config[key];
     const targets = Object.values(data.state.targets);
     $('#targetCount').textContent = targets.length;
     $('#statEnabled').textContent = targets.filter(t => t.enabled).length;
-    $('#statPassed').textContent = targets.filter(validPass).length;
-    $('#statReview').textContent = targets.filter(t => t.enabled && ['review', 'unavailable'].includes(t.state)).length;
     $('#statRequests').textContent = dayCount();
     syncSelect($('#model'), targets.map(t => [t.model, t.model + (t.enabled ? '' : '（监测关闭）')]));
     syncSelect($('#prompt'), data.prompts.map(p => [p.id, p.name]));
     syncSelect($('#historyModel'), [['', '全部模型'], ...[...new Set([...targets.map(t => t.model), ...data.state.results.map(r => r.model)])].map(m => [m, m])]);
-    showPrompt(); renderTargets(); renderControls(); renderHistory();
+    showPrompt(); renderTargets(); renderControls(); renderHistoryView();
     $('#lastSync').textContent = '更新于 ' + dateTime(new Date().toISOString());
   } catch (error) {
     pollError = error.message; feedback(pollError);
@@ -313,23 +264,20 @@ $('#copyAnswer').onclick = () => pending($('#copyAnswer'), async () => {
   await navigator.clipboard.writeText($('#testAnswer').textContent);
   feedback('回答已复制', true);
 });
-for (const id of ['historyModel', 'historyVerdict', 'historyPrompt', 'historyReview']) $('#' + id).onchange = () => { historyLimit = 30; renderHistory(); };
+for (const id of ['historyModel', 'historyVerdict', 'historyPrompt', 'historyReview']) $('#' + id).onchange = () => { resetHistoryLimit(); renderHistoryView(); };
 $('#exportHistory').onclick = () => {
   if (!data) return;
-  const url = URL.createObjectURL(new Blob([JSON.stringify({ exported_at: new Date().toISOString(), results: filteredHistory() }, null, 2)], { type: 'application/json' }));
-  const link = document.createElement('a');
-  link.href = url; link.download = 'intelligence-check-results.json'; link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  exportFilteredHistory(data);
 };
 $('#clearHistory').onclick = () => pending($('#clearHistory'), async () => {
-  const records = filteredHistory();
+  const records = filteredHistory(data);
   if (!records.length) return;
-  if (!confirm(`永久清理当前筛选的 ${records.length} 条记录？原始回答与审核将删除，已消耗预算和模型门禁保持不变。`)) return;
+  if (!confirm(`永久清理当前筛选的 ${records.length} 条记录？原始回答与审核将删除，已消耗预算保持不变。`)) return;
   await request('/api/results/clear', { ids: records.map(r => r.id) });
   await refresh();
-  feedback('记录已清理，预算与模型门禁保持不变', true);
+  feedback('记录已清理，已消耗预算保持不变', true);
 });
-$('#loadHistory').onclick = () => { historyLimit += 30; renderHistory(); };
+$('#loadHistory').onclick = () => { loadMoreHistory(); renderHistoryView(); };
 $('#run').onclick = () => pending($('#run'), async () => {
   if (!requireGateway()) return;
   const model = $('#model').value, prompt = $('#prompt').value;
@@ -365,7 +313,7 @@ $('#target').onsubmit = event => {
   const form = event.target;
   pending(form.querySelector('button:last-child'), async () => {
     await request('/api/target', { model: form.elements.model.value.trim(), enabled: true });
-    form.reset(); feedback('已添加监测目标', true); await refresh();
+    form.reset(); feedback('已添加检测目标', true); await refresh();
   });
 };
 async function saveConfig() {

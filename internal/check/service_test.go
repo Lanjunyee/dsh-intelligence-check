@@ -4,9 +4,6 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
@@ -14,40 +11,45 @@ import (
 func fixture(t *testing.T) *Service {
 	t.Helper()
 	d := t.TempDir()
-	gate := filepath.Join(d, "gate.js")
-	s, e := New(d, gate)
+	s, e := New(d)
 	if e != nil {
 		t.Fatal(e)
 	}
 	t.Cleanup(s.Close)
 	return s
 }
-func TestGateAndPersistence(t *testing.T) {
-	s := fixture(t)
-	if e := s.SetTarget("a/solo", true); e != nil {
-		t.Fatal(e)
+
+func TestTargetAndRecordPersistence(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	b, _ := os.ReadFile(s.gate)
-	if !strings.Contains(string(b), "a/solo") || !strings.Contains(string(b), "ctx.reject(403") {
-		t.Fatal("missing gate")
+	if err := s.SetTarget("a/solo", true); err != nil {
+		t.Fatal(err)
 	}
-	s.Action("a/solo", "hold")
-	s.Action("a/solo", "allow")
-	state, _ := s.Snapshot()
-	if !state.Targets["a/solo"].AllowUntil.After(time.Now()) {
-		t.Fatal("no lease")
+	s.mu.Lock()
+	s.state.Results = append(s.state.Results, Result{ID: "one", Model: "a/solo", Answer: "answer", Time: time.Now()})
+	err = s.saveLocked()
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
 	}
-	var restored State
-	if e := s.store.Load(&restored); e != nil {
-		t.Fatal(e)
+	s.Close()
+	restored, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if restored.Targets["a/solo"].State != "review" {
-		t.Fatal("hold lost")
+	defer restored.Close()
+	state, _ := restored.Snapshot()
+	if len(state.Targets) != 1 || !state.Targets["a/solo"].Enabled || len(state.Results) != 1 || state.Results[0].Answer != "answer" {
+		t.Fatal("target or record lost across restart")
 	}
-	if state.Alias != "" || state.Config.GatewayKey != "" {
-		t.Fatal("secret leaked")
+	if _, health := restored.Snapshot(); health != "" {
+		t.Fatal(health)
 	}
 }
+
 func TestGrade(t *testing.T) {
 	for _, tt := range []struct{ a, w string }{{"Answer: **46.24 inches**.", "passed"}, {"46.24 inches is incorrect. Final: 48 inches.", "failed"}, {"48 inches", "failed"}, {"46.24", "passed"}, {"Example: 46.24, but my final answer is 48.", "failed"}} {
 		if got := Grade("milk", tt.a); got != tt.w {
@@ -81,46 +83,7 @@ func TestHTTPAuthentication(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer secret")
 	w = httptest.NewRecorder()
 	h.ServeHTTP(w, r)
-	if w.Code != 200 || strings.Contains(w.Body.String(), s.state.Alias) {
+	if w.Code != 200 {
 		t.Fatal(w.Code)
-	}
-}
-func TestTriggerDedupAndExpiry(t *testing.T) {
-	s := fixture(t)
-	s.SetTarget("a/solo", true)
-	s.mu.Lock()
-	s.state.Config = Config{GatewayURL: "http://127.0.0.1:1", GatewayKey: "secret", DailyLimit: 1}
-	s.state.Targets["a/solo"].State = "passed"
-	s.state.Targets["a/solo"].CheckedAt = time.Now()
-	s.mu.Unlock()
-	if e := s.Trigger("a/solo", "milk", false); e != nil {
-		t.Fatal(e)
-	}
-	state, _ := s.Snapshot()
-	if len(state.Results) != 0 {
-		t.Fatal("fresh target probed")
-	}
-	s.LogLine(`MAGPIE_QUALITY_TRIGGER {"model":"a/luna"}`)
-	state, _ = s.Snapshot()
-	if len(state.Targets) != 1 {
-		t.Fatal("luna configured automatically")
-	}
-}
-
-func TestUnavailableCooldown(t *testing.T) {
-	s := fixture(t)
-	s.SetTarget("a/solo", true)
-	s.mu.Lock()
-	s.state.Config = Config{GatewayURL: "http://127.0.0.1:1", GatewayKey: "fixture", DailyLimit: 120}
-	target := s.state.Targets["a/solo"]
-	target.State = "unavailable"
-	target.RetryAfter = time.Now().Add(15 * time.Minute)
-	s.mu.Unlock()
-	if err := s.Trigger("a/solo", "milk", false); err != nil {
-		t.Fatal(err)
-	}
-	state, _ := s.Snapshot()
-	if len(state.Results) != 0 || state.Targets["a/solo"].State != "unavailable" {
-		t.Fatal("cooldown triggered paid probe")
 	}
 }

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestModelTraceBatchBudgetAndGateIsolation(t *testing.T) {
+func TestModelTraceBatchBudgetAndTargetIsolation(t *testing.T) {
 	s := fixture(t)
 	var calls atomic.Int32
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -21,7 +21,7 @@ func TestModelTraceBatchBudgetAndGateIsolation(t *testing.T) {
 			Messages []struct{ Content string }
 		}
 		json.NewDecoder(r.Body).Decode(&body)
-		if !strings.HasPrefix(body.Model, "quality-probe/") || len(body.Messages) != 1 || !strings.Contains(body.Messages[0].Content, "1 到 355") {
+		if body.Model != "a/solo" || len(body.Messages) != 1 || !strings.Contains(body.Messages[0].Content, "1 到 355") {
 			t.Error("independent probe payload invalid")
 		}
 		fmt.Fprint(w, `{"choices":[{"message":{"content":"1,2,3"},"finish_reason":"stop"}],"usage":{"total_tokens":12}}`)
@@ -29,7 +29,6 @@ func TestModelTraceBatchBudgetAndGateIsolation(t *testing.T) {
 	defer up.Close()
 	s.Configure(Config{GatewayURL: up.URL, GatewayKey: "fixture", DailyLimit: 3})
 	s.SetTarget("a/solo", true)
-	s.Action("a/solo", "hold")
 	if err := s.TriggerModelTrace("a/solo"); err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +47,8 @@ func TestModelTraceBatchBudgetAndGateIsolation(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	state, _ := s.Snapshot()
-	if calls.Load() != 3 || state.Targets["a/solo"].State != "review" {
-		t.Fatal("changed gate or wrong call count")
+	if calls.Load() != 3 || !state.Targets["a/solo"].Enabled {
+		t.Fatal("wrong call count or monitoring changed")
 	}
 	seen := map[int]bool{}
 	for _, result := range state.Results {

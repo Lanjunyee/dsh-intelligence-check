@@ -7,7 +7,7 @@ import {resolveCloudflared} from '../plugin/cloudflared-runtime.mjs';
 import {waitForConsole} from '../plugin/console-readiness.mjs';
 const root=path.resolve(import.meta.dirname,'..');const dir=await fs.mkdtemp(path.join(os.tmpdir(),'quality-cloudflare-'));
 const binary=await resolveCloudflared({},process.env.CLOUDFLARED_CACHE||'/tmp/quality-cloudflare-runtime');
-const child=spawn(path.join(root,'bin/quality-check'),['-data',dir,'-gate',path.join(dir,'gate.js'),'-owned'],{stdio:['pipe','pipe','pipe']});
+const child=spawn(path.join(root,'bin/quality-check'),['-data',dir,'-owned'],{stdio:['pipe','pipe','pipe']});
 let output='';const info=await new Promise((resolve,reject)=>{child.stdout.on('data',b=>{output+=b;const i=output.indexOf('\n');if(i>=0)resolve(JSON.parse(output.slice(0,i)))});child.once('error',reject)});
 try{
  const response=await fetch(info.origin+'/api/console',{method:'POST',headers:{authorization:'Bearer '+info.control,'content-type':'application/json'},body:JSON.stringify({remote:true,binary})});

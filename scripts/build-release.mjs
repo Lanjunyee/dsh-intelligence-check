@@ -16,8 +16,6 @@ for(const [goos,goarch] of platforms){
  const bytes=await readFile(output);manifest.artifacts.push({name,goos,goarch,size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});
  const bundle=path.join(root,'dist',`dsh-intelligence-check-${goos}-${goarch}`);await mkdir(path.join(bundle,'bin'),{recursive:true});
  for(const entry of ['plugin','assets','third_party','package.json','README.md','LICENSE'])await cp(path.join(root,entry),path.join(bundle,entry),{recursive:true});
- // Never distribute a runtime gate snapshot or its private probe alias.
- await writeFile(path.join(bundle,'plugin','gate.middleware.js'),'export function onRequest(body) { return body; }\n');
  await copyFile(output,path.join(bundle,'bin',goos==='windows'?'quality-check.exe':'quality-check'));
  const archive=path.basename(bundle)+'.tgz';
  const packed=spawnSync('tar',['-czf',path.join(root,'dist',archive),'-C',path.join(root,'dist'),path.basename(bundle)],{stdio:'inherit'});if(packed.status!==0)throw Error('Archive failed');

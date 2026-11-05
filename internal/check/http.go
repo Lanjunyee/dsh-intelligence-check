@@ -4,10 +4,10 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/fs"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
@@ -81,20 +81,9 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		state, health := s.Snapshot()
 		s.mu.Lock()
-		lastActivity := s.lastActivity
 		gatewayConfigured := s.state.Config.GatewayURL != "" && s.state.Config.GatewayKey != ""
 		s.mu.Unlock()
-		logHealth := "未配置日志源：自动触发不可用"
-		if state.Config.LogPath != "" {
-			f, err := os.Open(state.Config.LogPath)
-			if err != nil {
-				logHealth = "日志源不可读：自动触发不可用"
-			} else {
-				f.Close()
-				logHealth = "日志源可读"
-			}
-		}
-		writeJSON(w, map[string]any{"state": state, "health": health, "log_health": logHealth, "last_activity": lastActivity, "gateway_configured": gatewayConfigured, "prompts": Prompts, "guidance": Guidance})
+		writeJSON(w, map[string]any{"state": state, "health": health, "gateway_configured": gatewayConfigured, "prompts": Prompts, "guidance": Guidance})
 	})
 	mux.HandleFunc("GET /api/results/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
@@ -157,10 +146,7 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 		writeJSON(w, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("GET /api/models", func(w http.ResponseWriter, r *http.Request) {
-		s.mu.Lock()
-		cfg := s.state.Config
-		s.mu.Unlock()
-		models, err := Models(r.Context(), cfg)
+		models, err := s.transport.Models(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), 502)
 			return
@@ -197,7 +183,7 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 			http.Error(w, "请先保存 Magpie 网关 URL 和 Key", 400)
 			return
 		}
-		models, err := Models(r.Context(), cfg)
+		models, err := s.transport.Models(r.Context())
 		if err != nil {
 			http.Error(w, err.Error(), 502)
 			return
@@ -229,9 +215,9 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 			if a.Prompt == "" {
 				a.Prompt = "milk"
 			}
-			err = s.Trigger(a.Model, a.Prompt, true)
+			err = s.Trigger(a.Model, a.Prompt)
 		} else {
-			err = s.Action(a.Model, a.Action)
+			err = errors.New("未知操作")
 		}
 		if err != nil {
 			http.Error(w, err.Error(), 400)
