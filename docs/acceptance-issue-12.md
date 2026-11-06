@@ -10,6 +10,7 @@
 | 验收分支 / worktree | `worktree-agent-acae7b6884212140a` / `/Users/jxq/agent_work/dsh-intelligence-check/.claude/worktrees/agent-acae7b6884212140a` |
 | 实现提交 | `f4b2584`（本验收文档随后单独提交） |
 | DSH CLI | `/usr/local/bin/dsh` → `/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh`；`dsh --version` = `0.2.2-rc.1` |
+| 版本范围说明 | 本文的宿主验收只针对 DSH `0.2.2-rc.1`（macOS arm64）；`package.json` 的 `engines.dsh` 声明 `>=0.2.0 <0.3.0` 是兼容声明，不代表该范围内的其他版本已逐版本验收 |
 | 平台 | macOS 27.2（Darwin 27.2.0），arm64 |
 | 构建工具 | Go `1.27.3 darwin/arm64`；Node `v26.13.0`；Playwright（Edge channel / 缓存 Chromium） |
 | 模型 | 全部为回环地址上的受控 OpenAI 兼容服务，经宿主 `llm-pi-ai` 注册；未使用真实付费模型或凭据 |
@@ -41,7 +42,7 @@
 | `node scripts/dsh-lifecycle-check.mjs` | 完整/缺用量/宿主错误/截断/取消/独立复测/同名目标隔离/取消后重跑/重启持久化 | PASS |
 | `node scripts/dsh-auto-check.mjs` | 自动检测默认关闭与 900 秒默认间隔；仅监测目标 milk；无业务对话触发；关闭开关、取消监测、移除目标后停止；并发合并；每日预算与清理不返还；重启恢复配置；退出取消活动调用并清理后台；开关与间隔通过原生页面设置 | PASS（浏览器 UI 已验证） |
 
-`dsh-profile-check` 中两个 profile 同时运行时共享后台进程数为 1；owner 退出后进程数回到 0，剩余 profile 的页面在后续请求中重新选举并继续读取同一批记录。CLI 宿主启动日志为 `CLI host detected; the shared desktop backend is not started`。
+`dsh-profile-check` 中两个 profile 同时运行时共享后台进程数为 1；owner 退出后进程数回到 0，剩余 profile 的页面在后续请求中重新选举并继续读取同一批记录。CLI 宿主启动日志为 `CLI host detected; the shared desktop backend is not running`。该日志只描述启动时没有找到可连接的桌面后台；补修后（提交 `1b0a928`）后续请求会再次尝试只连接，不会启动或接管后台。
 
 ## 4. 非宿主检查
 

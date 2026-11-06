@@ -4,7 +4,7 @@
 
 项目已迁移为 DeepSeek Harness 原生模型质量测试与报告插件，复用桌面应用的模型配置与凭据，保留 Go 后端与 SQLite，检测结果不阻断业务请求。入口已从斜杠命令与独立网页控制台迁入 DSH 全局侧边栏，并在主区域展示原生检测页面；同一用户、同一台机器的所有工作目录与 profile 共享检测状态和一套后台。设计见 [ADR 0002](docs/adr/0002-desktop-panel-and-shared-check-state.md)，实现规格见 [Issue #12](https://github.com/Lanjunyee/dsh-intelligence-check/issues/12)。
 
-**当前状态：Issue #12 已实现。原生侧边栏入口与主区域页面、用户级共享存储、单后台与桌面配置权威、桌面退出清理、CLI 不启动后台、题库/手动检测/自动检测/历史/人工评审/导出/HTML/SVG 预览/ModelTrace 均已接入；已在真实 DSH `0.2.2-rc.1` Web 宿主和真实打包 Desktop 应用中完成验收（见 [验收记录](docs/acceptance-issue-12.md)）。**
+**当前状态：Issue #12 已实现，Issue #13 的四项修复已合入并从最终源码交付。原生侧边栏入口与主区域页面、用户级共享存储、单后台与桌面配置权威、桌面退出清理、CLI 不启动后台、题库/手动检测/自动检测/历史/人工评审/导出/HTML/SVG 预览/ModelTrace 均已接入；Issue #12 在真实 DSH `0.2.2-rc.1` Web 宿主和真实打包 Desktop 应用中完成验收，Issue #13 最终包另在真实打包 Desktop 中完成设置失败/重试/焦点、归因失败可见、基本页面与退出清理验收（见 [Issue #12 验收记录](docs/acceptance-issue-12.md) 与 [Issue #13 验收记录](docs/acceptance-issue-13.md)）。**
 
 当前实现是 DSH 原生 Cordis 插件，对指定的模型执行主动质量检测并保存报告；检测运行、失败或异常结果均不拦截业务请求，也不改写业务模型路由。
 
@@ -26,7 +26,7 @@ DSH 侧边栏 -> 主区域原生检测页面 -> 手动/定时质量检测 -> 插
 
 ## 安装
 
-本包以 DSH 官方 bundle 分发：`package.json` 声明 `dsh.bundle.patch`、`dsh.bundle.platforms` 与 `dsh.client`（`platform: web`），`cordis.patch.yml` 插入 `dsh-intelligence-check` 插件行，`exports["./client"]` 提供原生页面 bundle，`engines.dsh` 限定 `>=0.2.0 <0.3.0`。已在 DSH `0.2.2-rc.1` 验证。包清单的 `icon` 指向 `assets/plugin-icon.png`（小于 256 KiB），完整图标资源仍随包分发。
+本包以 DSH 官方 bundle 分发：`package.json` 声明 `dsh.bundle.patch`、`dsh.bundle.platforms` 与 `dsh.client`（`platform: web`），`cordis.patch.yml` 插入 `dsh-intelligence-check` 插件行，`exports["./client"]` 提供原生页面 bundle。`engines.dsh` 声明兼容范围 `>=0.2.0 <0.3.0`，但实际验收只在 DSH `0.2.2-rc.1`（macOS arm64）完成；该声明不是已逐版本验证的范围。包清单的 `icon` 指向 `assets/plugin-icon.png`（小于 256 KiB），完整图标资源仍随包分发。
 
 ### 从发行包安装（使用者无需 Go）
 
@@ -226,8 +226,8 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 - 自动检测只在桌面宿主后台运行期间执行，不提供宿主退出后的守护进程或停机补跑；关闭、禁用、卸载或退出时停止后续定时调用并取消活动调用；
 - 检测结果不参与业务请求放行、拒绝、暂停或模型切换；
 - 检测目标来自桌面应用的模型目录，模型调用经插件桥接到 `ctx.llm.stream()`，复用桌面 provider 配置与凭据；其他 profile 不会覆盖该目录；
-- 五个平台的发行包由最终集成源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装与宿主验收。真实打包 Desktop 应用已用 Playwright Electron 驱动完成侧栏、四标签、受控检测、历史与退出清理验收；最终修复产物另做轻量真实 Desktop 复核。操作为自动驱动而非人工鼠标，详见验收记录；
-- 最终产物与整体验收记录见 [Issue #12 验收记录](docs/acceptance-issue-12.md)。
+- 五个平台的发行包由最终集成源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装与宿主验收。Issue #12 的真实打包 Desktop 验收针对当时的产物，覆盖侧栏、四标签、受控检测、历史与退出清理；Issue #13 最终包另在真实打包 Desktop 中完成设置保存失败保留草稿与重试、轮询焦点、归因失败可见、基本页面及退出清理验收。操作为自动驱动而非人工鼠标，详见验收记录；
+- Issue #12 与 Issue #13 的产物与验收记录分别见 [Issue #12 验收记录](docs/acceptance-issue-12.md) 与 [Issue #13 验收记录](docs/acceptance-issue-13.md)。
 - Cloudflare Quick Tunnel 是临时通道，不保证公网可用性或稳定性；DSH 原生入口不依赖该通道。
 
 ## 开发与验收
