@@ -66,7 +66,7 @@
 
 ## 5. 宿主层回归（与真实窗口结果分开）
 
-以下检查均使用最终 tarball（`dist/dsh-intelligence-check-darwin-arm64.tgz`，哈希 `9143b756…4d7d`）、隔离 `DSH_HOME`、真实 Go 后台和本地受控模型；未设置 `DSH_INTELLIGENCE_CHECK_TEST_BINARY`，因此使用包内二进制。
+以下检查均以最终 tarball（`dist/dsh-intelligence-check-darwin-arm64.tgz`，哈希 `9143b756…4d7d`）安装插件包，使用隔离 `DSH_HOME`、真实 Go 后台和本地受控模型。设置、归因、profile、生命周期和自动检测脚本在 `DSH_INTELLIGENCE_CHECK_TEST_BINARY` 未设置时使用包内后台。恢复回归不同：脚本启动时调用 `backendBinary()` 选择仓库后台（存在 `bin/quality-check` 时使用该文件，否则使用 `bin/quality-check-<goos>-<goarch>`），复制到独立临时目录，设置 `DSH_INTELLIGENCE_CHECK_TEST_BINARY` 指向副本，再由 `pluginConfigOverride()` 把安装插件的 `binaryPath` 指向该副本。因此恢复回归实际运行的是仓库后台副本，不是包内后台；下表的恢复结果为该副本上的结果。历史产物记录已核实该副本与包内后台 SHA-256 均为 `9b86c7d705b32e60356e7a7c8f72b487145d95b9c8c4e470cfe4bf6835159cc9`；两者一致不改变上述选择链的区别。
 
 | 命令 | 覆盖 | 结果 |
 |---|---|---|
@@ -133,7 +133,7 @@
 **本轮实际运行**
 
 - 最终源码构建、两次可重现校验、`go vet`、`go test -race`、25 项插件/UI 测试、`package-check`、`install-check`。
-- 最终 tarball 的 6 项宿主回归（设置、归因、恢复、profile、生命周期、自动检测）。
+- 以最终 tarball 安装插件的 6 项宿主回归（设置、归因、恢复、profile、生命周期、自动检测）；其中恢复回归的 Go 后台是仓库 `backendBinary()` 选择的副本（通过覆盖配置使用），其余 5 项使用包内后台。
 - 最终 tarball 在真实打包 Desktop 的完整窗口操作（第 6 节）。
 
 **沿用证据（未在本轮重跑）**
@@ -187,5 +187,7 @@ node scripts/dsh-profile-check.mjs
 node scripts/dsh-lifecycle-check.mjs
 node scripts/dsh-auto-check.mjs
 ```
+
+`unset DSH_INTELLIGENCE_CHECK_TEST_BINARY` 只作用于脚本入口，不表示恢复回归使用包内后台。`dsh-recovery-check.mjs` 会先调用 `backendBinary()` 选择仓库后台，复制到独立临时目录并重新设置 `DSH_INTELLIGENCE_CHECK_TEST_BINARY`，再通过 `pluginConfigOverride()` 将安装插件的 `binaryPath` 指向副本；其余 5 项未设置覆盖，使用包内后台。第 5 节记录的副本与包内后台哈希一致。
 
 真实 Desktop 复现需要额外的隔离 `DSH_HOME`、按 Desktop 布局预建 `profiles/desktop`、安装最终 tarball，并运行 `/tmp/dsh-issue13-desktop/drive-desktop.mjs`（受控模型服务端口 18766）；该驱动不属于仓库测试。
