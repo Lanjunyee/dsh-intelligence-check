@@ -221,7 +221,7 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; font-src 'self'; frame-src 'self'; frame-ancestors 'none'; connect-src 'self'")
 		// A public readiness probe exposes no management state or credentials.
 		if r.Method == "GET" && r.URL.Path == "/health" {
-			w.Header().Set("X-Magpie-Quality", "ready")
+			w.Header().Set("X-DSH-Intelligence-Check", "ready")
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}

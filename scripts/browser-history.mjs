@@ -63,6 +63,15 @@ export async function verifyHistoryAndReview({page, context, runPrompt}) {
   const secondProviderText = await historyText(page);
   assert.match(secondProviderText, /fixture-two \/ shared-model/, '同名模型记录串到了其他 provider');
   assert.doesNotMatch(secondProviderText, /fixture-one/);
+  assert.match(secondProviderText, /1015 tokens/);
+  const cachedExport = await downloadJSON(page);
+  assert.equal(cachedExport.data.results.length, 2);
+  for (const record of cachedExport.data.results) {
+    assert.equal(record.usage.input_tokens, 10);
+    assert.equal(record.usage.output_tokens, 5);
+    assert.equal(record.usage.cache_read_tokens, 1000);
+    assert.equal(record.usage.total_tokens, 1015);
+  }
 
   // Same-question comparison keeps both runs distinguishable by provider + model.
   await page.locator('#historyModel').selectOption(identity('fixture-one', model));

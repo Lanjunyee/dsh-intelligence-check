@@ -145,6 +145,10 @@ test('profile load pushes the host catalog and the command issues an authorized 
     const result = await p.run();
     assert.equal(result.kind, 'success');
     assert.match(result.text, /http:\/\/127\.0\.0\.1:\d+\/open\/[0-9a-f]{48}/);
+    const health = await fetch(new URL('/health', result.text.match(/http:\/\/\S+/)[0]));
+    assert.equal(health.status, 204);
+    assert.equal(health.headers.get('X-DSH-Intelligence-Check'), 'ready');
+    assert.equal(health.headers.has('X-Magpie-Quality'), false);
     const console = await openConsole(result.text.match(/http:\/\/\S+/)[0]);
     const response = await (await console('/api/state')).json();
     assert.deepEqual(response.state.targets, []);
@@ -152,6 +156,10 @@ test('profile load pushes the host catalog and the command issues an authorized 
     assert.equal(response.state.config.daily_limit, 120);
     assert.equal(response.state.config.auto_enabled, false);
     assert.equal(response.state.config.interval_seconds, 900);
+    for (const id of ['japan', 'person']) {
+      assert.doesNotMatch(response.guidance[id], /门禁/);
+      assert.match(response.guidance[id], /手动|人工/);
+    }
     assert.deepEqual(response.catalog.map(entry => `${entry.provider}|${entry.model}`).sort(),
       ['provider-one|shared-model', 'provider-two|shared-model']);
   } finally {
@@ -382,6 +390,58 @@ test('same model at two providers routes to each controlled response', async () 
     assert.equal(two.answer, '48 inches');
     assert.equal(two.verdict, 'failed');
     assert.deepEqual(p.streamCalls.map(options => options.provider), ['provider-one', 'provider-two', 'provider-two']);
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
+test('host cache usage survives records and a plugin restart', async () => {
+  const cases = [
+    {
+      model: 'cache-read',
+      host: {inputTokens: 10, outputTokens: 5, cacheReadTokens: 1000},
+      expected: {input_tokens: 10, output_tokens: 5, cache_read_tokens: 1000},
+    },
+    {
+      model: 'cache-write',
+      host: {inputTokens: 10, outputTokens: 5, cacheWriteTokens: 200, reasoningTokens: 3, totalTokens: 215},
+      expected: {input_tokens: 10, output_tokens: 5, cache_write_tokens: 200, reasoning_tokens: 3, total_tokens: 215},
+    },
+    {
+      model: 'cache-only',
+      host: {inputTokens: 0, outputTokens: 0, cacheReadTokens: 1000},
+      expected: {input_tokens: 0, output_tokens: 0, cache_read_tokens: 1000},
+    },
+  ];
+  const options = {
+    stream: async function* ({model}) {
+      if (model !== 'cache-only') yield {type: 'text-delta', index: 0, text: '46.24 inches'};
+      yield {type: 'usage', usage: cases.find(entry => entry.model === model).host};
+      yield {type: 'finish', reason: {kind: 'stop'}};
+    },
+  };
+  let p = profile(undefined, options);
+  const dir = p.dir;
+  try {
+    p.ctx.addProvider({id: 'cache-provider', name: 'Cache Provider'},
+      cases.map(({model}) => ({provider: 'cache-provider', id: model, name: model})));
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    for (const entry of cases) {
+      await addTarget(console, 'cache-provider', entry.model);
+      await startCheck(console, 'cache-provider', entry.model);
+      const record = await waitRecord(console, 'cache-provider', entry.model, result => result.verdict !== 'running');
+      assert.deepEqual(record.usage, entry.expected, `${entry.model} usage was lost`);
+    }
+    await p.ctx.dispose({remove: false});
+    p = profile(dir, options);
+    await apply(p.ctx, {binaryPath});
+    const reopened = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    const state = await stateOf(reopened);
+    for (const entry of cases) {
+      assert.deepEqual(state.results.find(record => record.model === entry.model).usage, entry.expected,
+        `${entry.model} usage was lost after restart`);
+    }
   } finally {
     await p.ctx.dispose();
   }

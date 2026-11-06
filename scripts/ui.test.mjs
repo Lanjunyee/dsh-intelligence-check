@@ -34,6 +34,20 @@ test('missing usage is shown as unavailable, never as zero', () => {
   assert.equal(usageLabel({verdict: 'passed', usage: {input_tokens: 12, output_tokens: 5, total_tokens: 17}}), '17 tokens');
 });
 
+test('reported usage includes cache input without counting reasoning twice', () => {
+  const cases = [
+    {usage: {input_tokens: 10, output_tokens: 5, cache_read_tokens: 1000}, total: 1015},
+    {usage: {input_tokens: 10, output_tokens: 5, cache_write_tokens: 200, reasoning_tokens: 3}, total: 215},
+    {usage: {input_tokens: 0, output_tokens: 0, cache_read_tokens: 1000}, total: 1000},
+    {usage: {input_tokens: 10, output_tokens: 5, cache_read_tokens: 1000, cache_write_tokens: 200}, total: 1215},
+  ];
+  for (const {usage, total} of cases) {
+    assert.equal(usageLabel({verdict: 'passed', usage}), `${total} tokens`);
+  }
+  assert.deepEqual(usageTotals(cases.map(({usage}) => ({verdict: 'passed', usage}))),
+    {total: 3445, reported: 4, missing: 0});
+});
+
 test('unstarted requests are not shown as missing usage', () => {
   assert.equal(usageLabel({verdict: 'skipped'}), '未开始');
   assert.deepEqual(usageTotals([

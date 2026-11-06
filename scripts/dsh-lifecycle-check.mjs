@@ -67,6 +67,10 @@ function controlledService(handlers, slowModels = {}) {
 const complete = (request, response) => sse(response, {
   pieces: ['46.24 inches'], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17},
 });
+const cached = (request, response) => sse(response, {
+  pieces: ['46.24 inches'],
+  usage: {prompt_tokens: 1010, completion_tokens: 5, prompt_tokens_details: {cached_tokens: 1000}},
+});
 const noUsage = (request, response) => sse(response, {pieces: ['46.24 inches']});
 const truncated = (request, response) => sse(response, {
   pieces: ['partial answer'], finish: 'length', usage: {prompt_tokens: 9, completion_tokens: 2, total_tokens: 11},
@@ -85,6 +89,7 @@ const retest = (request, response) => {
 };
 const one = await controlledService({
   'complete-model': complete,
+  'cached-model': cached,
   'no-usage-model': noUsage,
   'error-model': failed,
   'truncate-model': truncated,
@@ -114,7 +119,7 @@ function lifecyclePatch() {
   return `- id: llm-pi-ai
   config:
     providers:
-${provider('provider-one', 'Provider One', one.origin, ['complete-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model'])}
+${provider('provider-one', 'Provider One', one.origin, ['complete-model', 'cached-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model'])}
 ${provider('provider-two', 'Provider Two', two.origin, ['slow-model'])}
 - id: agent-default-model
   config:
@@ -180,7 +185,7 @@ try {
   let host = await bootProfile('lifecycle-check');
   let client = await openConsole(host);
 
-  for (const model of ['complete-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model']) {
+  for (const model of ['complete-model', 'cached-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model']) {
     await addTarget(client, 'provider-one', model);
   }
   await addTarget(client, 'provider-two', 'slow-model');
@@ -191,6 +196,14 @@ try {
   assert.equal(completeRecord.answer, '46.24 inches');
   assert.equal(total(completeRecord), 17);
   assert.equal(completeRecord.finish, 'stop');
+
+  await start(client, 'provider-one', 'cached-model');
+  const cachedRecord = await waitRecord(client, 'provider-one', 'cached-model', r => r.verdict !== 'running');
+  assert.equal(cachedRecord.verdict, 'passed');
+  assert.equal(cachedRecord.usage.input_tokens, 10);
+  assert.equal(cachedRecord.usage.output_tokens, 5);
+  assert.equal(cachedRecord.usage.cache_read_tokens, 1000);
+  assert.equal(total(cachedRecord), 1015);
 
   await start(client, 'provider-one', 'no-usage-model');
   const noUsageRecord = await waitRecord(client, 'provider-one', 'no-usage-model', r => r.verdict !== 'running');
@@ -249,6 +262,7 @@ try {
     .find(entry => entry.provider === providerId && entry.model === model && entry.prompt === 'milk');
   assert.equal(by('provider-one', 'complete-model').finish, 'stop');
   assert.equal(total(by('provider-one', 'complete-model')), 17);
+  assert.deepEqual(by('provider-one', 'cached-model').usage, cachedRecord.usage, '重启后缓存用量丢失');
   assert.equal(Object.hasOwn(by('provider-one', 'no-usage-model'), 'usage'), false, '重启后缺失用量变成 0');
   assert.equal(by('provider-one', 'no-usage-model').finish, 'stop');
   assert.equal(by('provider-one', 'error-model').verdict, 'unavailable');

@@ -39,10 +39,9 @@ export const names = { passed: '通过', unavailable: '检测不可用', manual:
 function reportedTokens(usage) {
   if (!usage || typeof usage !== 'object') return undefined;
   if (Number.isFinite(usage.total_tokens)) return usage.total_tokens;
-  const input = Number.isFinite(usage.input_tokens) ? usage.input_tokens : undefined;
-  const output = Number.isFinite(usage.output_tokens) ? usage.output_tokens : undefined;
-  if (input === undefined && output === undefined) return undefined;
-  return (input || 0) + (output || 0);
+  const counts = [usage.input_tokens, usage.output_tokens, usage.cache_read_tokens, usage.cache_write_tokens]
+    .filter(Number.isFinite);
+  return counts.length === 0 ? undefined : counts.reduce((sum, count) => sum + count, 0);
 }
 export function usageLabel(record) {
   if (record?.verdict === 'skipped') return '未开始';

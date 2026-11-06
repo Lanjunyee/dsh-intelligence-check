@@ -11,7 +11,7 @@ test('remote readiness retries 502 without consuming the management ticket', asy
       assert.equal(options.redirect, 'error');
       assert.equal(options.headers, undefined);
       return ++calls === 1 ? new Response('<html>502</html>', { status: 502 }) :
-        new Response(null, { status: 204, headers: { 'x-magpie-quality': 'ready' } });
+        new Response(null, { status: 204, headers: { 'x-dsh-intelligence-check': 'ready' } });
     },
   });
   assert.equal(calls, 2);

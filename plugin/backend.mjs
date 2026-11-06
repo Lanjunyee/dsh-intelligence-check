@@ -91,12 +91,12 @@ export function createBackend({binaryPath, dataDir, bridge}) {
 
   async function stop() {
     const running = child;
-    if (!running || running.exitCode !== null) return;
+    if (!running || running.exitCode !== null || running.signalCode !== null) return;
     const exited = new Promise(resolve => running.once('exit', resolve));
     running.stdin.end();
     running.kill('SIGTERM');
     const timer = setTimeout(() => {
-      if (running.exitCode === null) running.kill('SIGKILL');
+      if (running.exitCode === null && running.signalCode === null) running.kill('SIGKILL');
     }, STOP_GRACE_MS);
     await exited;
     clearTimeout(timer);

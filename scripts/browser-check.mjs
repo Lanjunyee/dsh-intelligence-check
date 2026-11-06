@@ -84,7 +84,10 @@ function mockService(name, streamDelayMs, options = {}) {
       event({choices: [{index: 0, delta: {content: pieces[index]}}]});
     }
     event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
-    event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: milk ? 17 : 4}});
+    const usage = milk && name === 'two'
+      ? {prompt_tokens: 1010, completion_tokens: 5, prompt_tokens_details: {cached_tokens: 1000}}
+      : {prompt_tokens: 12, completion_tokens: 5, total_tokens: milk ? 17 : 4};
+    event({choices: [], usage});
     completed = true;
     response.end('data: [DONE]\n\n');
   });
@@ -320,6 +323,7 @@ try {
   await runPrompt(page, 'fixture-two');
   await page.waitForFunction(() => document.querySelector('#answerMeta').textContent.includes('未通过'), {}, {timeout: 30000});
   assert.equal(await page.locator('#testAnswer').textContent(), '48 inches');
+  assert.match(await page.locator('#answerMeta').textContent(), /1015 tokens/);
   assert.equal(one.requests.filter(request => request.prompt.includes('A previously isolated')).length, 1);
   assert.equal(two.requests.filter(request => request.prompt.includes('A previously isolated')).length, 2);
   assert.ok(one.requests.some(request => request.prompt.includes('business ping')), 'business request bypassed the host route');

@@ -12,7 +12,7 @@ export async function waitForConsole(url, options = {}) {
         signal: AbortSignal.timeout(Math.max(1, Math.min(5000, deadline - Date.now()))),
       });
       lastStatus = r.status;
-      const ready = r.status === 204 && r.headers.get('x-magpie-quality') === 'ready';
+      const ready = r.status === 204 && r.headers.get('x-dsh-intelligence-check') === 'ready';
       await r.body?.cancel();
       if (ready) return;
     } catch (error) {

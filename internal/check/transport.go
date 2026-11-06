@@ -20,9 +20,12 @@ const DefaultMaxTokens = 8192
 // Usage is the token usage reported by the host. A nil Usage means the host
 // did not report usage; consumers must not substitute zero.
 type Usage struct {
-	InputTokens  int  `json:"input_tokens"`
-	OutputTokens int  `json:"output_tokens"`
-	TotalTokens  *int `json:"total_tokens,omitempty"`
+	InputTokens      int  `json:"input_tokens"`
+	OutputTokens     int  `json:"output_tokens"`
+	TotalTokens      *int `json:"total_tokens,omitempty"`
+	CacheReadTokens  *int `json:"cache_read_tokens,omitempty"`
+	CacheWriteTokens *int `json:"cache_write_tokens,omitempty"`
+	ReasoningTokens  *int `json:"reasoning_tokens,omitempty"`
 }
 
 type GenerationError struct {

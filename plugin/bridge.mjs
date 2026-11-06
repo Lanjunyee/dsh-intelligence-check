@@ -14,14 +14,18 @@ function usageOf(usage) {
   if (!usage || typeof usage !== 'object') return undefined;
   const input = usage.inputTokens;
   const output = usage.outputTokens;
-  const total = usage.totalTokens;
   if (!Number.isFinite(input) || !Number.isFinite(output)) return undefined;
-  // The host adapter fills all-zero counts when the provider reported no
-  // usage. A non-empty request cannot legitimately consume zero tokens, so
-  // this is absence, not a reported zero.
-  if (input === 0 && output === 0 && !total) return undefined;
   const normalized = {input_tokens: input, output_tokens: output};
-  if (Number.isFinite(total)) normalized.total_tokens = total;
+  for (const [source, target] of [
+    ['totalTokens', 'total_tokens'],
+    ['cacheReadTokens', 'cache_read_tokens'],
+    ['cacheWriteTokens', 'cache_write_tokens'],
+    ['reasoningTokens', 'reasoning_tokens'],
+  ]) {
+    if (Number.isFinite(usage[source])) normalized[target] = usage[source];
+  }
+  // 宿主在未报告用量时填充全零；缓存用量非零时仍须保留。
+  if (Object.values(normalized).every(count => count === 0)) return undefined;
   return normalized;
 }
 

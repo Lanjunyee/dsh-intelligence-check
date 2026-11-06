@@ -106,7 +106,7 @@ PLAYWRIGHT_EXECUTABLE="/Users/jxq/Library/Caches/ms-playwright/chromium-1243/chr
 
 ## 8. 统一审查修复回归与最终产物
 
-审查后的修复提交为 `97a6dd304429c6f4d36386bc1e31cb20b89a91af`。该提交只改变源码、嵌入网页资源、脚本与 checked-in 五平台二进制；随后从同一源码重新生成 `dist/` 并用最终 tarball 重跑受影响验收。第 2 节的产物与哈希保留为修复前记录，本节哈希为最终 HEAD 产物。
+审查后的修复提交为 `97a6dd304429c6f4d36386bc1e31cb20b89a91af`。该提交只改变源码、嵌入网页资源、脚本与 checked-in 五平台二进制；随后从同一源码重新生成 `dist/` 并用最终 tarball 重跑受影响验收。第 2 节的产物与哈希保留为修复前记录，本节哈希记录该轮产物；本轮四项 Spec 修复的当前产物见第 9 节。
 
 ### 8.1 修复内容与回归
 
@@ -114,7 +114,7 @@ PLAYWRIGHT_EXECUTABLE="/Users/jxq/Library/Caches/ms-playwright/chromium-1243/chr
 - **HTML 预览 401 文案**：嵌入资源中的过期会话提示改为 DeepSeek Harness 的 `dsh-intelligence-check` 入口；UI 测试断言不再包含 Magpie。
 - **Standards 候选处置**：保留旧门禁路径不影响保存的有效覆盖并改名为 `TestLegacyArtifactPathDoesNotAffectSaving`；质量检测与 ModelTrace 共用失败映射但分别保留评分/原始回答成功语义；删除用量改用具名 `clearedUsage` 映射并保持原 JSON 形状；`Secret` 改名为 `RandomHex`；五平台映射集中到 `plugin/platform.mjs`；真实 DSH 脚本的隔离 home、安装、启动、停止与会话交换集中到 `scripts/dsh-harness.mjs`，各脚本的受控模型与断言保持独立。
 
-### 8.2 最新产物（同一源码连续两次构建哈希一致）
+### 8.2 上轮产物（当时同一源码连续两次构建哈希一致）
 
 | 产物 | SHA-256 |
 |---|---|
@@ -149,4 +149,48 @@ PLAYWRIGHT_EXECUTABLE="/Users/jxq/Library/Caches/ms-playwright/chromium-1243/chr
 | `node scripts/browser-check.mjs` | PASS（最终 tarball；含普通 milk 不被取消、合法 ModelTrace 取消回归） |
 
 真实宿主仍为 DSH `0.2.2-rc.1`、macOS 27.2 arm64、隔离 `DSH_HOME`、宿主配置的本地受控模型、运行时 PATH 不含 Go。第 5 节的边界仍然适用：其他四平台仅交叉编译与静态包检查；未等待生产 15 分钟与 180 秒超时；Cloudflare 临时通道未重跑；未使用真实凭据或付费模型；未推送、未发布。
+
+## 9. 本轮四项 Spec 修复与当前产物
+
+本轮以 `b5669f507e9250ec266bb6b3b234e4de246cc24a` 为基线，仅处理缓存用量、健康协议命名、手动题目说明和信号退出清理四项问题。未纳入上次 Standards 轴的六项判断性建议。
+
+### 9.1 逐项 RED → GREEN
+
+- **缓存用量**：插件公共调用到 Go 记录的回归先复现 `cache_read_tokens: 1000` 丢失，修复后缓存读取、写入、推理元数据和仅缓存用量均随记录保存，插件重启后仍可读取。控制台用量回归先显示 `15 tokens` 而非 `1015 tokens`；修复后没有宿主总量时合计互斥的未缓存输入、输出、缓存读写，推理元数据不重复计入输出。缺失用量仍显示不可用。
+- **健康协议命名**：真实插件 `/health` 先因新协议头不存在而失败，就绪读取端也先复现收到 204 但不能识别 ready。服务端、读取端及现有契约断言统一使用 `X-DSH-Intelligence-Check: ready`，不再返回旧头。
+- **题目说明**：控制台 `/api/state` 中 japan/person 的参考说明先因包含“门禁”而失败；修复后准确说明手动质量检测与人工评审。仅改 `Guidance`，题目 `Text` 未改变，现有 8 项题目检查通过。
+- **信号退出清理**：受控子进程分别自行以 SIGTERM/SIGKILL 结束后，`stop()` 的两项回归均先复现清理超时；识别 `signalCode` 后，两项清理及重复调用均通过。正常插件卸载和启动失败回归保持通过。信号专测使用 POSIX 子进程，在本机执行；Windows 跳过此专测。
+
+### 9.2 本轮验证结果
+
+| 检查 | 结果 |
+|---|---|
+| `go vet ./...` | PASS |
+| `go test -race ./...` | PASS，81 项；首轮有 1 项旧健康协议断言失败，同步该契约断言后全部通过 |
+| 插件完整测试与 UI 测试 | PASS，21 项插件、7 项 UI，共 28 项 |
+| `node scripts/build-release.mjs` | PASS，五平台后台及官方 tarball 已刷新；本轮重建一次，未重复上轮的双次构建一致性实验 |
+| `node scripts/package-check.mjs` | PASS，五平台布局、可执行位、10 项产物的 manifest/SHA256SUMS 检查 |
+| `node scripts/install-check.mjs` | PASS，包内后台启动、授权入口、无需 Go |
+| `node scripts/dsh-lifecycle-check.mjs` | PASS，新增真实宿主缓存计数及重启保留，既有完整/缺用量/错误/截断/取消/独立复测回归通过 |
+| `node scripts/browser-check.mjs` | PASS，缓存用量在回答和历史中显示 1015、导出保留缓存计数；七题、历史评审、隔离预览、ModelTrace 与业务并行回归通过 |
+| `node scripts/dsh-profile-check.mjs` | PASS，最终包安装/卸载、运行中热禁用、HMR 重启用、跨会话共享/跨 profile 隔离与退出清理 |
+
+三个真实宿主检查均使用 `DSH_PLUGIN_PACKAGE=$PWD/dist/dsh-intelligence-check-darwin-arm64.tgz`，未设置测试二进制覆盖，运行 PATH 为 `/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin`（不含 Go）。环境仍为 DSH `0.2.2-rc.1`、macOS 27.2 arm64、隔离 profile 和本地受控模型。真实缓存响应由提供方报告 prompt=1010、completion=5、cached=1000，宿主规范化后记录为 input=10、output=5、cache_read=1000、total=1015；历史 JSON 导出及重启读取均保持这些计数。
+
+自动调度与授权机制未修改，本轮未重复执行 `dsh-auto-check.mjs` 和独立 `auth-browser-check.mjs`；插件完整测试覆盖自动开关，最终包 profile/browser 检查覆盖实际授权入口。未在其他四平台真实运行，未完整等待生产 15 分钟或 180 秒，未执行 Cloudflare 外网临时通道检查，未修改真实用户 profile、调用付费模型、推送或发布。
+
+### 9.3 当前五平台产物
+
+| 产物 | SHA-256 |
+|---|---|
+| `dist/quality-check-linux-amd64` | `b68de8b14d3f930572305cbca70b5c0d878ef83e8dcca381e1a5b79f1f618caa` |
+| `dist/dsh-intelligence-check-linux-amd64.tgz` | `d77c5a1cfa787b66ec9ee2ee0d95d55deb41432d63997563c35f7cbc6aa51baf` |
+| `dist/quality-check-linux-arm64` | `e828abbbdfb5856d90b20812a7522b697a16f9f681c6af6a622cf4c037b54e33` |
+| `dist/dsh-intelligence-check-linux-arm64.tgz` | `773c1e0db53ee1341d7f2c42cdcd2ccce91ba2882aa4ecbcd62117a7bc5f7006` |
+| `dist/quality-check-darwin-amd64` | `d7e3b5f0d2495a7f058f0b9e59ac554194589bb92291bc551c70de5c10a529b0` |
+| `dist/dsh-intelligence-check-darwin-amd64.tgz` | `020e44dfc4151e6f00a26afd155ccbd6fb23fb7c7198e0f48e4014aea06181fd` |
+| `dist/quality-check-darwin-arm64` | `66308e7c1efe56b4edaf46a994cb59399ad37b8702bf96f6d08f1a5631952179` |
+| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,868,496 B） | `5cea911225b3ad3902fd2a0af0ce874e87c0c0ebd029005a4edd32d4f732f2ad` |
+| `dist/quality-check-windows-amd64.exe` | `a918012e25e83a226ef13fa723924f4285c15c7477a1a45041d1c4f72aa45d78` |
+| `dist/dsh-intelligence-check-windows-amd64.tgz` | `fe8ab72ea80bc87e9dc3b03de140502e00d0f41d619bada4626f8e68f0d5c617` |
 

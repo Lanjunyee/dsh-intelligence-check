@@ -323,7 +323,7 @@ func TestModelTraceAssetsRequireAuthentication(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/health", nil))
-	if w.Code != 204 || w.Body.Len() != 0 || w.Header().Get("X-Magpie-Quality") != "ready" {
+	if w.Code != 204 || w.Body.Len() != 0 || w.Header().Get("X-DSH-Intelligence-Check") != "ready" {
 		t.Fatal("invalid health probe")
 	}
 }
