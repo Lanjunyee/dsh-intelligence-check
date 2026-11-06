@@ -1,5 +1,7 @@
 # 使用 DeepSeek Harness 原生插件承接现有 Go 检测后端
 
+> 部分被 [ADR 0002](0002-desktop-panel-and-shared-check-state.md) 取代：入口与界面、数据隔离及后台生命周期以新决策为准。
+
 迁移以 DeepSeek Harness 为唯一宿主，使用其原生插件接口管理现有 Go 后端的启动与退出，保留 SQLite、检测功能与独立网页控制台。相较于将后端和界面重写为宿主内的 TypeScript 与 React 组件，这一选择优先复用已有功能，同时继续承担多平台二进制分发与子进程生命周期管理。
 
 产品定位改为主动测试与报告：检测结果不阻断业务模型请求，不再保留 Magpie 的请求门禁集成。保留题库、手动检测、历史、人工评审、HTML/SVG 预览及 ModelTrace；旧版数据原样保留，首版不导入。
