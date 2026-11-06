@@ -22,6 +22,11 @@ const ctx = {
   }},
   get() {},
   inject() {},
+  on() { return () => {}; },
+  llm: {
+    listProviders: () => [],
+    listModels: async () => [],
+  },
 };
 try {
   await apply(ctx, process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
@@ -37,7 +42,7 @@ try {
   const cookie = opened.headers.get('set-cookie').split(';')[0];
   const state = await fetch(new URL('/api/state', url), {headers: {cookie}});
   assert.equal(state.status, 200);
-  assert.deepEqual((await state.json()).state.targets, {});
+  assert.deepEqual((await state.json()).state.targets, []);
   const origin = new URL(url).origin;
   while (disposers.length > 0) await disposers.pop()();
   await assert.rejects(fetch(origin + '/health'));

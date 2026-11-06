@@ -10,8 +10,8 @@ import (
 
 func TestModelTraceBatchBudgetAndTargetIsolation(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
-	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string)) (string, int, error) {
-		return "1,2,3", 12, nil
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		return Generation{Answer: "1,2,3", Usage: usage(12), Finish: "stop"}, nil
 	}}
 	s := fixtureWithTransport(t, transport)
 	s.Configure(Config{DailyLimit: 3})
@@ -40,7 +40,7 @@ func TestModelTraceBatchBudgetAndTargetIsolation(t *testing.T) {
 	}
 	seen := map[int]bool{}
 	for _, result := range state.Results {
-		if result.Batch != state.Results[0].Batch || result.Tokens != 12 || result.PromptText == "" || seen[result.ExpectedCount] {
+		if result.Batch != state.Results[0].Batch || result.Usage == nil || *result.Usage.TotalTokens != 12 || result.PromptText == "" || seen[result.ExpectedCount] {
 			t.Fatal("batch metadata missing or challenge counts reused")
 		}
 		if result.Provider != id.Provider || result.Model != id.Model {

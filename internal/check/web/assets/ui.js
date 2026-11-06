@@ -35,4 +35,10 @@ export function syncSelect(select, options) {
 export const dateTime = raw => Date.parse(raw) > 0 ? new Date(raw).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '未通过';
 export const identity = (provider, model) => provider + '\u0000' + model;
 export const modelLabel = (provider, model) => `${provider} / ${model}`;
-export const names = { passed: '通过', unavailable: '检测不可用', manual: '待人工评价', failed: '未通过', running: '进行中' };
+export const names = { passed: '通过', unavailable: '检测不可用', manual: '待人工评价', failed: '未通过', running: '进行中', empty: '空回答', truncated: '回答截断' };
+export function usageLabel(record) {
+  const usage = record?.usage;
+  if (!usage) return '用量不可用';
+  const total = Number.isFinite(usage.total_tokens) ? usage.total_tokens : (usage.input_tokens || 0) + (usage.output_tokens || 0);
+  return `${total} tokens`;
+}

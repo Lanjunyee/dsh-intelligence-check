@@ -223,7 +223,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 - 原生插件入口、profile 后台、退出清理与官方 bundle/五平台分发已实现；宿主模型目录、`ctx.llm.stream()` 检测桥接与自动检测由后续迁移票完成；
 - 检测结果不参与业务请求放行、拒绝、暂停或模型切换；
-- 当前控制台的网关 Key 需要有权限调用 `/v1/models` 和 `/v1/chat/completions`，直至宿主模型桥接替换该配置；
+- 当前控制台的检测目标来自宿主模型目录，模型调用经插件桥接到 `ctx.llm.stream()`，复用宿主 provider 配置与凭据；
 - 五个平台的发行包由当前源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装，其余平台未在本机运行；
 - 最终整体验收由 Issue #11 使用最终集成源码重新生成产物。
 - Cloudflare Quick Tunnel 是临时通道，不保证公网可用性或稳定性；DSH 原生入口未接线。
@@ -265,7 +265,7 @@ node scripts/auth-browser-check.mjs
 - `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生插件加载、宿主入口、同 profile 共享、跨 profile 隔离、退出清理与卸载；`DSH_BINARY` 可指定 DSH 可执行文件，`DSH_PLUGIN_PACKAGE` 可指定要安装的 tarball 或检出目录；
 - `plugin-check.mjs` 验证已安装包的原生插件启动、管理链接和清理；
 - `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭；
-- `browser-check.mjs` 需要 Playwright，可通过 `PLAYWRIGHT_MODULE` 指定模块位置。
+- `browser-check.mjs` 使用真实隔离 DSH profile、宿主配置的受控 OpenAI 兼容服务和 Playwright，验证七题原文、provider + model 路由、实时增量、回答/评估/用量持久化与业务会话并行；`DSH_INTELLIGENCE_CHECK_TEST_BINARY` 可指定当前源码构建的后台二进制，`PLAYWRIGHT_MODULE` 可指定模块位置。
 - `auth-browser-check.mjs` 使用真实浏览器验证从外部页面打开管理链接、票据重定向和会话刷新。
 
 运行时检测链路的 Go 测试使用受控模型响应，覆盖手动 milk、评分、独立复测、预算、取消、记录持久化和传输边界；不依赖业务请求被拦截。

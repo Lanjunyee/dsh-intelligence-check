@@ -13,8 +13,8 @@ import (
 
 func TestManualMilkThroughWebPersistsAfterRestart(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
-	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string)) (string, int, error) {
-		return "46.24 inches", 9, nil
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		return Generation{Answer: "46.24 inches", Usage: usage(9), Finish: "stop"}, nil
 	}}
 	dir := t.TempDir()
 	s, err := NewWithTransport(dir, transport)
@@ -45,7 +45,7 @@ func TestManualMilkThroughWebPersistsAfterRestart(t *testing.T) {
 		state, _ := s.Snapshot()
 		if len(state.Results) == 1 && state.Results[0].Verdict != "running" {
 			result := state.Results[0]
-			if result.Verdict != "passed" || result.Answer != "46.24 inches" || result.Tokens != 9 || result.Provider != "provider-a" {
+			if result.Verdict != "passed" || result.Answer != "46.24 inches" || result.Usage == nil || *result.Usage.TotalTokens != 9 || result.Provider != "provider-a" {
 				t.Fatalf("unexpected record: %+v", result)
 			}
 			break
@@ -116,14 +116,14 @@ func TestTransportSeamCoversChecksAndModelTrace(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
 	var mu sync.Mutex
 	updates := 0
-	transport := &fakeTransport{generate: func(_ context.Context, _ TargetID, _ string, progress func(string)) (string, int, error) {
+	transport := &fakeTransport{generate: func(_ context.Context, _ TargetID, _ string, progress func(string), _ GenerateParams) (Generation, error) {
 		if progress != nil {
 			progress("part")
 			mu.Lock()
 			updates++
 			mu.Unlock()
 		}
-		return "46.24 inches", 7, nil
+		return Generation{Answer: "46.24 inches", Usage: usage(7), Finish: "stop"}, nil
 	}}
 	s := fixtureWithTransport(t, transport)
 	if err := s.SetCatalog([]Model{{Provider: id.Provider, ProviderName: "Provider A", Model: id.Model, Name: "Solo"}}); err != nil {

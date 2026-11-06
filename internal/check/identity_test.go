@@ -143,7 +143,7 @@ type gatedTransport struct {
 	answers map[TargetID]string
 }
 
-func (g *gatedTransport) Generate(ctx context.Context, id TargetID, _ string, _ func(string)) (string, int, error) {
+func (g *gatedTransport) Generate(ctx context.Context, id TargetID, _ string, _ func(string), _ GenerateParams) (Generation, error) {
 	g.mu.Lock()
 	started := g.started[id]
 	release := g.release[id]
@@ -156,10 +156,10 @@ func (g *gatedTransport) Generate(ctx context.Context, id TargetID, _ string, _ 
 		select {
 		case <-release:
 		case <-ctx.Done():
-			return "", 0, ctx.Err()
+			return Generation{}, ctx.Err()
 		}
 	}
-	return answer, 3, nil
+	return Generation{Answer: answer, Usage: usage(3), Finish: "stop"}, nil
 }
 
 func TestRunCancelAndBudgetUseProviderAndModelIdentity(t *testing.T) {

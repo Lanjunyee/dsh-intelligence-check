@@ -6,22 +6,29 @@ import (
 	"testing"
 )
 
+func usage(total int) *Usage {
+	v := total
+	return &Usage{InputTokens: v, OutputTokens: 0, TotalTokens: &v}
+}
+
 type fakeTransport struct {
 	mu       sync.Mutex
 	calls    []TargetID
 	prompts  []string
-	generate func(context.Context, TargetID, string, func(string)) (string, int, error)
+	params   []GenerateParams
+	generate func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error)
 }
 
-func (f *fakeTransport) Generate(ctx context.Context, id TargetID, prompt string, progress func(string)) (string, int, error) {
+func (f *fakeTransport) Generate(ctx context.Context, id TargetID, prompt string, progress func(string), params GenerateParams) (Generation, error) {
 	f.mu.Lock()
 	f.calls = append(f.calls, id)
 	f.prompts = append(f.prompts, prompt)
+	f.params = append(f.params, params)
 	f.mu.Unlock()
 	if f.generate != nil {
-		return f.generate(ctx, id, prompt, progress)
+		return f.generate(ctx, id, prompt, progress, params)
 	}
-	return "46.24 inches", 7, nil
+	return Generation{Answer: "46.24 inches", Usage: usage(7), Finish: "stop"}, nil
 }
 
 func (f *fakeTransport) snapshot() ([]TargetID, []string) {

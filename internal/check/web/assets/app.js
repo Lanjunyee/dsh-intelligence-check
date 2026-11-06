@@ -1,4 +1,4 @@
-import { $, text, icon, hydrateIcons, syncSelect, dateTime, names, identity, modelLabel } from './ui.js';
+import { $, text, icon, hydrateIcons, syncSelect, dateTime, names, identity, modelLabel, usageLabel } from './ui.js';
 import { filteredHistory, renderHistory, renderComparison, exportFilteredHistory, resetHistoryLimit, loadMoreHistory } from './history.js';
 import { renderModelTrace, runModelTrace } from '../modeltrace/panel.js';
 import { analyzeAnswer } from './answer-analysis.js';
@@ -101,8 +101,8 @@ function renderTestAnswer() {
   const prompt = $('#prompt').value;
   const submissionError = testErrors.get(JSON.stringify([provider, model, prompt]));
   const records = data.state.results.filter(r => r.provider === provider && r.model === model && r.prompt === prompt).reverse();
-  if (awaitingTest?.provider === provider && awaitingTest?.model === model && awaitingTest.prompt === prompt && records.some(r => !awaitingTest.ids.has(r.id))) awaitingTest = undefined;
-  const waiting = awaitingTest?.provider === provider && awaitingTest?.model === model && awaitingTest.prompt === prompt;
+  if (awaitingTest?.provider === provider && awaitingTest?.model === model && awaitingTest?.prompt === prompt && records.some(r => !awaitingTest.ids.has(r.id))) awaitingTest = undefined;
+  const waiting = awaitingTest?.provider === provider && awaitingTest?.model === model && awaitingTest?.prompt === prompt;
   syncSelect($('#testRecord'), [['', '最新回答'], ...records.map(r => [r.id, `${dateTime(r.time)} / ${names[r.verdict] || r.verdict}`])]);
   $('#testRecord').disabled = waiting || !records.length;
   const record = waiting ? undefined : records.find(r => r.id === $('#testRecord').value) || records[0];
@@ -110,12 +110,13 @@ function renderTestAnswer() {
   $('#cancelTest').hidden = !data.state.results.some(r => r.provider === provider && r.model === model && r.verdict === 'running' && r.prompt !== 'modeltrace');
   const answer = record?.answer || '';
   const elapsed = record ? Math.max(0, Math.floor((Date.now() - Date.parse(record.time)) / 1000)) : 0;
-  $('#testStatus').textContent = running ? `检测进行中，已等待 ${elapsed} 秒（最长 180 秒）。` : record ? record.verdict === 'unavailable' ? '检测未完成' : '检测完成' : modelRunning(model) ? '该模型正在运行其他检测。' : '';
-  $('#testStatus').className = 'inline-state' + (record?.verdict === 'unavailable' ? ' error' : '');
-  $('#answerMeta').textContent = record ? `${modelLabel(record.provider, record.model)} / ${dateTime(record.time)} / ${names[record.verdict] || record.verdict} / ${record.tokens || 0} tokens` : target ? `${modelLabel(provider, model)} / ${data.prompts.find(p => p.id === prompt)?.name || ''}` : '尚未添加检测目标';
+  const incomplete = record && ['unavailable', 'empty', 'truncated'].includes(record.verdict);
+  $('#testStatus').textContent = running ? `检测进行中，已等待 ${elapsed} 秒（最长 180 秒）。` : record ? (incomplete ? '检测未完成' : '检测完成') : modelRunning(model) ? '该模型正在运行其他检测。' : '';
+  $('#testStatus').className = 'inline-state' + (incomplete ? ' error' : '');
+  $('#answerMeta').textContent = record ? `${modelLabel(record.provider, record.model)} / ${dateTime(record.time)} / ${names[record.verdict] || record.verdict} / ${usageLabel(record)}` : target ? `${modelLabel(provider, model)} / ${data.prompts.find(p => p.id === prompt)?.name || ''}` : '尚未添加检测目标';
   $('#answerError').hidden = !record?.error && !submissionError;
   $('#answerError').textContent = submissionError || record?.error || '';
-  const content = answer || (running ? '正在等待模型回答…' : record ? record.error ? '本次请求未返回回答正文。' : '本次回答为空。' : '当前模型和题目暂无回答');
+  const content = answer || (running ? '正在等待模型回答…' : record ? record.verdict === 'empty' ? '本次回答为空。' : record.error ? '本次请求未返回回答正文。' : '本次回答为空。' : '当前模型和题目暂无回答');
   if ($('#testAnswer').textContent !== content) $('#testAnswer').textContent = content;
   $('#testAnswer').setAttribute('aria-busy', String(Boolean(running)));
   $('#copyAnswer').disabled = !answer;

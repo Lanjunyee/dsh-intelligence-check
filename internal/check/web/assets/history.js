@@ -1,4 +1,4 @@
-import { $, text, icon, syncSelect, dateTime, names, identity, modelLabel } from './ui.js';
+import { $, text, icon, syncSelect, dateTime, names, identity, modelLabel, usageLabel } from './ui.js';
 
 let signature;
 let limit = 30;
@@ -23,7 +23,7 @@ export function renderHistory(data) {
   $('#results').replaceChildren(...records.map(record => {
     const details = text('details', '', 'record'); details.dataset.id = record.id; details.open = expanded.has(record.id);
     const summary = text('summary', '', 'history-summary');
-    summary.append(text('span', dateTime(record.time), 'record-date'), text('span', modelLabel(record.provider, record.model), 'record-model model-id'), text('span', data.prompts.find(p => p.id === record.prompt)?.name || 'ModelTrace', 'record-type'), text('span', names[record.verdict] || record.verdict, 'state ' + record.verdict), text('span', `${record.tokens || 0} tokens`, 'record-tokens numeric'));
+    summary.append(text('span', dateTime(record.time), 'record-date'), text('span', modelLabel(record.provider, record.model), 'record-model model-id'), text('span', data.prompts.find(p => p.id === record.prompt)?.name || 'ModelTrace', 'record-type'), text('span', names[record.verdict] || record.verdict, 'state ' + record.verdict), text('span', usageLabel(record), 'record-tokens numeric'));
     const body = text('div', '', 'record-body');
     if (record.error) body.append(text('p', record.error, 'inline-state error'));
     if (record.review) body.append(text('p', `人工审核：${({ accepted: '确认通过', rejected: '标记问题', pending: '待确认' })[record.review]}${record.review_note ? ' / ' + record.review_note : ''}`, 'inline-state'));
@@ -41,7 +41,7 @@ export function renderComparison(data) {
   for (const side of ['A', 'B']) {
     const record = data?.state.results.find(r => r.id === $('#compare' + side).value);
     $('#compareText' + side).textContent = record?.answer || '尚未选择回答';
-    $('#compareMeta' + side).textContent = record ? `${modelLabel(record.provider, record.model)} / ${record.prompt} / ${dateTime(record.time)} / ${record.tokens || 0} tokens / ${{ accepted: '确认通过', rejected: '标记问题', pending: '待确认' }[record.review || 'pending']}${record.review_note ? ' / ' + record.review_note : ''}` : '';
+    $('#compareMeta' + side).textContent = record ? `${modelLabel(record.provider, record.model)} / ${record.prompt} / ${dateTime(record.time)} / ${usageLabel(record)} / ${{ accepted: '确认通过', rejected: '标记问题', pending: '待确认' }[record.review || 'pending']}${record.review_note ? ' / ' + record.review_note : ''}` : '';
   }
 }
 

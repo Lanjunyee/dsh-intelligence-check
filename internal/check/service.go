@@ -58,7 +58,7 @@ type Result struct {
 	Verdict       string    `json:"verdict"`
 	Error         string    `json:"error,omitempty"`
 	Time          time.Time `json:"time"`
-	Tokens        int       `json:"tokens"`
+	Usage         *Usage    `json:"usage,omitempty"`
 	Batch         string    `json:"batch,omitempty"`
 	ExpectedCount int       `json:"expected_count,omitempty"`
 	PromptText    string    `json:"prompt_text,omitempty"`
@@ -74,19 +74,8 @@ type State struct {
 	ClearedUsage map[string]map[string]map[string]int `json:"cleared_usage,omitempty"`
 }
 
-// Transport is the model-generation boundary. The plugin forwards these calls
-// to the DSH host bridge; model catalog membership arrives separately.
-type Transport interface {
-	Generate(context.Context, TargetID, string, func(string)) (string, int, error)
-}
-
-// hostTransport is the seam for the DSH generation bridge. It intentionally
-// fails until that bridge is connected.
-type hostTransport struct{}
-
-func (hostTransport) Generate(context.Context, TargetID, string, func(string)) (string, int, error) {
-	return "", 0, errors.New("宿主模型调用桥接尚未接入")
-}
+// Transport is defined in transport.go. The plugin forwards generation to the
+// DSH host bridge; model catalog membership arrives separately.
 
 type Service struct {
 	mu          sync.Mutex
@@ -396,21 +385,29 @@ func (s *Service) run(ctx context.Context, id TargetID, p Prompt) {
 			s.mu.Unlock()
 			break
 		}
-		answer, tokens, err := s.transport.Generate(ctx, id, p.Text, func(partial string) {
+		gen, err := s.transport.Generate(ctx, id, p.Text, func(partial string) {
 			s.mu.Lock()
 			s.state.Results[idx].Answer = partial
 			s.mu.Unlock()
-		})
-		r.Answer = answer
-		r.Tokens = tokens
-		if err != nil {
+		}, GenerateParams{MaxTokens: DefaultMaxTokens})
+		r.Answer, r.Usage = gen.Answer, gen.Usage
+		switch {
+		case err != nil:
 			r.Verdict = "unavailable"
 			r.Error = err.Error()
 			if errors.Is(ctx.Err(), context.Canceled) {
 				r.Error = "检测已取消"
 			}
-		} else {
-			r.Verdict = Grade(p.ID, answer)
+		case gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED"):
+			r.Verdict, r.Error = "unavailable", "检测已取消"
+		case gen.Finish == "error" || gen.Error != nil:
+			r.Verdict, r.Error = "unavailable", generationFailure(gen)
+		case strings.TrimSpace(gen.Answer) == "":
+			r.Verdict, r.Error = "empty", "空回答"
+		case gen.Finish == "max-tokens":
+			r.Verdict, r.Error = "truncated", "回答被截断"
+		default:
+			r.Verdict = Grade(p.ID, gen.Answer)
 		}
 		s.mu.Lock()
 		s.state.Results[idx] = r

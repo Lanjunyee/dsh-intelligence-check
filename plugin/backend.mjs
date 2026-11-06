@@ -15,7 +15,7 @@ export function resolveBinary(root, config = {}) {
   return path.join(root, 'bin', `quality-check${suffix}`);
 }
 
-export function createBackend({binaryPath, dataDir}) {
+export function createBackend({binaryPath, dataDir, bridge}) {
   let child;
   let ready;
   let origin = '';
@@ -24,7 +24,9 @@ export function createBackend({binaryPath, dataDir}) {
 
   function start() {
     ready ??= new Promise((resolve, reject) => {
-      child = spawn(binaryPath, ['-data', dataDir, '-owned'], {stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true});
+      const args = ['-data', dataDir, '-owned'];
+      if (bridge) args.push('-bridge', bridge.url, '-bridge-token', bridge.token);
+      child = spawn(binaryPath, args, {stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true});
       child.stdin.on('error', () => {});
       child.stderr.on('data', chunk => {
         failure = (failure + chunk).slice(-4096);

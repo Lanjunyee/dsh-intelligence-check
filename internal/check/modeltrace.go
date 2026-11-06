@@ -76,11 +76,15 @@ func (s *Service) TriggerModelTrace(id TargetID) error {
 		defer func() { s.mu.Lock(); delete(s.running, id); s.mu.Unlock() }()
 		for i, r := range probes {
 			ctx, cancel := context.WithTimeout(s.ctx, 180*time.Second)
-			answer, tokens, err := s.transport.Generate(ctx, id, r.PromptText, nil)
+			gen, err := s.transport.Generate(ctx, id, r.PromptText, nil, GenerateParams{MaxTokens: DefaultMaxTokens})
 			cancel()
-			r.Answer, r.Tokens, r.Verdict = answer, tokens, "manual"
+			r.Answer, r.Usage, r.Verdict = gen.Answer, gen.Usage, "manual"
 			if err != nil {
 				r.Verdict, r.Error = "unavailable", err.Error()
+			} else if gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED") {
+				r.Verdict, r.Error = "unavailable", "检测已取消"
+			} else if gen.Finish == "error" || gen.Error != nil {
+				r.Verdict, r.Error = "unavailable", generationFailure(gen)
 			}
 			s.mu.Lock()
 			s.state.Results[start+i] = r

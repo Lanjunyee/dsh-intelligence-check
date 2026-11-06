@@ -15,7 +15,7 @@ func TestRejectSharedDataDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Unlock()
-	err := run(dir, "127.0.0.1:0", "", false)
+	err := run(dir, "127.0.0.1:0", "", false, "", "")
 	if err == nil || !strings.Contains(err.Error(), "已有检测服务") {
 		t.Fatalf("shared directory accepted: %v", err)
 	}

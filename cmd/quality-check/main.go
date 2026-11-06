@@ -22,13 +22,15 @@ func main() {
 	listen := flag.String("listen", "127.0.0.1:0", "loopback address")
 	cloudflared := flag.String("cloudflared", "", "official cloudflared executable")
 	owned := flag.Bool("owned", false, "stop when parent input closes")
+	bridge := flag.String("bridge", "", "host model generation bridge URL")
+	bridgeToken := flag.String("bridge-token", "", "host bridge bearer token")
 	flag.Parse()
-	if err := run(*dir, *listen, *cloudflared, *owned); err != nil {
+	if err := run(*dir, *listen, *cloudflared, *owned, *bridge, *bridgeToken); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
-func run(dir, addr, binary string, owned bool) error {
+func run(dir, addr, binary string, owned bool, bridge, bridgeToken string) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
@@ -49,7 +51,7 @@ func run(dir, addr, binary string, owned bool) error {
 	if ip == nil || !ip.IsLoopback() {
 		return fmt.Errorf("management listener must be loopback")
 	}
-	s, err := check.New(dir)
+	s, err := check.NewWithTransport(dir, transportFor(bridge, bridgeToken))
 	if err != nil {
 		return err
 	}
@@ -89,4 +91,11 @@ func run(dir, addr, binary string, owned bool) error {
 		server.Shutdown(ctx)
 	}
 	return nil
+}
+
+func transportFor(bridge, token string) check.Transport {
+	if bridge == "" {
+		return nil
+	}
+	return check.NewHostBridgeTransport(bridge, token)
 }

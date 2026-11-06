@@ -10,10 +10,10 @@ import (
 func TestCancelQualityRequest(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
 	started := make(chan struct{})
-	transport := &fakeTransport{generate: func(ctx context.Context, _ TargetID, _ string, _ func(string)) (string, int, error) {
+	transport := &fakeTransport{generate: func(ctx context.Context, _ TargetID, _ string, _ func(string), _ GenerateParams) (Generation, error) {
 		close(started)
 		<-ctx.Done()
-		return "", 0, ctx.Err()
+		return Generation{}, ctx.Err()
 	}}
 	s := fixtureWithTransport(t, transport)
 	s.Configure(Config{DailyLimit: 20})
@@ -65,8 +65,8 @@ func TestClearHistoryPreservesCompositeBudget(t *testing.T) {
 
 func TestUnmonitoredTargetAllowsManualChecks(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
-	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string)) (string, int, error) {
-		return "manual answer", 0, nil
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		return Generation{Answer: "manual answer", Finish: "stop"}, nil
 	}}
 	s := fixtureWithTransport(t, transport)
 	s.Configure(Config{DailyLimit: 20})

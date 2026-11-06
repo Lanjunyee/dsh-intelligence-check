@@ -19,7 +19,7 @@ func TestDetectionLifecycleUsesTransportWithoutProbeAlias(t *testing.T) {
 	}
 	waitIdle(t, s)
 	state, _ := s.Snapshot()
-	if len(state.Results) != 1 || state.Results[0].Verdict != "passed" || state.Results[0].Tokens != 7 {
+	if len(state.Results) != 1 || state.Results[0].Verdict != "passed" || state.Results[0].Usage == nil || *state.Results[0].Usage.TotalTokens != 7 {
 		t.Fatalf("results=%+v", state.Results)
 	}
 	if state.Results[0].Provider != id.Provider || state.Results[0].Model != id.Model {
@@ -65,12 +65,12 @@ func TestRetestAndFailureRecords(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32
-			transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string)) (string, int, error) {
+			transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
 				calls.Add(1)
 				if tc.fail {
-					return "", 0, errors.New("rate limited")
+					return Generation{}, errors.New("rate limited")
 				}
-				return tc.answer, 0, nil
+				return Generation{Answer: tc.answer, Finish: "stop"}, nil
 			}}
 			s := fixtureWithTransport(t, transport)
 			s.Configure(Config{DailyLimit: tc.limit})
@@ -89,8 +89,8 @@ func TestRetestAndFailureRecords(t *testing.T) {
 
 func TestManualPromptDoesNotRetestOrTouchTargetState(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
-	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string)) (string, int, error) {
-		return "<svg/>", 0, nil
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		return Generation{Answer: "<svg/>", Finish: "stop"}, nil
 	}}
 	s := fixtureWithTransport(t, transport)
 	s.Configure(Config{DailyLimit: 120})

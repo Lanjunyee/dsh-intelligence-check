@@ -18,15 +18,20 @@ const catalog = {
   'provider-two': [{provider: 'provider-two', id: 'shared-model', name: 'Shared Model'}],
 };
 
-function profile(dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-plugin-'))) {
+function profile(dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-plugin-')), options = {}) {
   const disposers = [];
   const commands = [];
   const listeners = {};
+  const streamCalls = [];
   const providers = [
     {id: 'provider-one', name: 'Provider One'},
     {id: 'provider-two', name: 'Provider Two'},
   ];
   const models = {...catalog};
+  const stream = options.stream || (async function* () {
+    yield {type: 'text-delta', index: 0, text: '46.24 inches'};
+    yield {type: 'finish', reason: {kind: 'stop'}};
+  });
   const ctx = {
     profileContext: {name: path.basename(dir), dir},
     effect(fn) {
@@ -43,6 +48,10 @@ function profile(dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-plugin-'))) {
     llm: {
       listProviders: () => [...providers],
       listModels: async provider => (models[provider] || []).map(model => ({...model})),
+      stream: opts => {
+        streamCalls.push(opts);
+        return stream(opts);
+      },
     },
     on(event, handler) {
       listeners[event] = handler;
@@ -66,6 +75,7 @@ function profile(dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-plugin-'))) {
     dir,
     commands,
     ctx,
+    streamCalls,
     async run(line = '/dsh-intelligence-check') {
       const [definition] = commands;
       assert.ok(definition, 'command was not registered');
@@ -103,6 +113,27 @@ async function addTarget(console, provider, model, enabled = false) {
 
 function targets(state) {
   return state.targets.map(target => `${target.provider}|${target.model}|${target.enabled}`).sort();
+}
+
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+async function startCheck(console, provider, model, prompt = 'milk') {
+  const response = await console('/api/action', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({provider, model, action: 'test', prompt}),
+  });
+  assert.equal(response.status, 200, await response.text());
+}
+
+async function waitRecord(console, provider, model, predicate) {
+  for (let i = 0; i < 200; i++) {
+    const state = await stateOf(console);
+    const record = [...state.results].reverse().find(entry => entry.provider === provider && entry.model === model && entry.prompt === 'milk');
+    if (record && predicate(record)) return record;
+    await delay(25);
+  }
+  throw new Error(`${provider}/${model} check did not settle`);
 }
 
 test('profile load pushes the host catalog and the command issues an authorized console link', async () => {
@@ -236,4 +267,149 @@ test('backend startup failure is reported by the host plugin load', async () => 
 
 test('plugin refuses to run without a DSH profile context', async () => {
   await assert.rejects(apply({effect() {}, commands: {register() {}}}, {}), /DSH profile/);
+});
+
+test('manual check streams through ctx.llm.stream and persists answer, verdict and usage', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const p = profile(undefined, {
+    stream: async function* () {
+      yield {type: 'block-start', index: 0, blockType: 'text'};
+      yield {type: 'text-delta', index: 0, text: '46.'};
+      await gate;
+      yield {type: 'text-delta', index: 0, text: '24 inches'};
+      yield {type: 'block-end', index: 0, block: {type: 'text', text: '46.24 inches'}};
+      yield {type: 'usage', usage: {inputTokens: 12, outputTokens: 5, totalTokens: 17}};
+      yield {type: 'finish', reason: {kind: 'stop'}};
+    },
+  });
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    await addTarget(console, 'provider-one', 'shared-model');
+    await startCheck(console, 'provider-one', 'shared-model');
+    const partial = await waitRecord(console, 'provider-one', 'shared-model', record => record.answer === '46.');
+    assert.equal(partial.verdict, 'running', 'increment only visible after completion');
+    release();
+    const record = await waitRecord(console, 'provider-one', 'shared-model', entry => entry.verdict !== 'running');
+    assert.equal(record.answer, '46.24 inches');
+    assert.equal(record.verdict, 'passed');
+    assert.deepEqual(record.usage, {input_tokens: 12, output_tokens: 5, total_tokens: 17});
+    assert.equal(p.streamCalls.length, 1);
+    const options = p.streamCalls[0];
+    assert.equal(options.provider, 'provider-one');
+    assert.equal(options.model, 'shared-model');
+    assert.equal(options.maxTokens, 8192);
+    assert.equal(options.messages.length, 1);
+    assert.equal(options.messages[0].role, 'user');
+    assert.equal(options.messages[0].content[0].text, (await (await console('/api/state')).json()).prompts.find(prompt => prompt.id === 'milk').text);
+    assert.equal(Object.hasOwn(options, 'sessionId'), false, 'quality check was stamped into a business session');
+    assert.equal(Object.hasOwn(options, 'stop'), false, 'unsupported stop option sent');
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
+test('same model at two providers routes to each controlled response', async () => {
+  const answers = {'provider-one': '46.24 inches', 'provider-two': '48 inches'};
+  const p = profile(undefined, {
+    stream: async function* (options) {
+      yield {type: 'text-delta', index: 0, text: answers[options.provider]};
+      yield {type: 'finish', reason: {kind: 'stop'}};
+    },
+  });
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    await addTarget(console, 'provider-one', 'shared-model');
+    await addTarget(console, 'provider-two', 'shared-model');
+    await startCheck(console, 'provider-one', 'shared-model');
+    await startCheck(console, 'provider-two', 'shared-model');
+    const one = await waitRecord(console, 'provider-one', 'shared-model', entry => entry.verdict !== 'running');
+    const two = await waitRecord(console, 'provider-two', 'shared-model', entry => entry.verdict !== 'running');
+    assert.equal(one.answer, '46.24 inches');
+    assert.equal(one.verdict, 'passed');
+    assert.equal(two.answer, '48 inches');
+    assert.equal(two.verdict, 'failed');
+    assert.deepEqual(p.streamCalls.map(options => options.provider), ['provider-one', 'provider-two', 'provider-two']);
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
+test('missing host usage stays absent instead of becoming zero', async () => {
+  const p = profile(undefined, {
+    stream: async function* () {
+      yield {type: 'text-delta', index: 0, text: '46.24 inches'};
+      yield {type: 'finish', reason: {kind: 'stop'}};
+    },
+  });
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    await addTarget(console, 'provider-one', 'shared-model');
+    await startCheck(console, 'provider-one', 'shared-model');
+    const record = await waitRecord(console, 'provider-one', 'shared-model', entry => entry.verdict !== 'running');
+    assert.equal(Object.hasOwn(record, 'usage'), false, 'missing usage was fabricated');
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
+test('empty and truncated host answers get distinct states and keep partial output', async () => {
+  const p = profile(undefined, {
+    stream: async function* (options) {
+      if (options.model === 'empty-model') {
+        yield {type: 'finish', reason: {kind: 'stop'}};
+        return;
+      }
+      yield {type: 'text-delta', index: 0, text: 'partial answer'};
+      yield {type: 'finish', reason: {kind: 'max-tokens'}};
+    },
+  });
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    await addTarget(console, 'provider-one', 'empty-model');
+    await addTarget(console, 'provider-one', 'truncated-model');
+    await startCheck(console, 'provider-one', 'empty-model');
+    await startCheck(console, 'provider-one', 'truncated-model');
+    const empty = await waitRecord(console, 'provider-one', 'empty-model', entry => entry.verdict !== 'running');
+    const truncated = await waitRecord(console, 'provider-one', 'truncated-model', entry => entry.verdict !== 'running');
+    assert.equal(empty.verdict, 'empty');
+    assert.match(empty.error, /空回答/);
+    assert.equal(truncated.verdict, 'truncated');
+    assert.equal(truncated.answer, 'partial answer');
+    assert.match(truncated.error, /截断/);
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
+test('cancel aborts the host stream and preserves the partial answer', async () => {
+  const p = profile(undefined, {
+    stream: async function* (options) {
+      yield {type: 'text-delta', index: 0, text: 'partial'};
+      await new Promise(resolve => options.signal.addEventListener('abort', resolve, {once: true}));
+      yield {type: 'finish', reason: {kind: 'aborted', failure: {code: 'ABORTED', message: 'Request was aborted'}}};
+    },
+  });
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    await addTarget(console, 'provider-one', 'shared-model');
+    await startCheck(console, 'provider-one', 'shared-model');
+    await waitRecord(console, 'provider-one', 'shared-model', entry => entry.answer === 'partial' && entry.verdict === 'running');
+    const cancelled = await console('/api/action', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({provider: 'provider-one', model: 'shared-model', action: 'cancel-test'}),
+    });
+    assert.equal(cancelled.status, 200, await cancelled.text());
+    const record = await waitRecord(console, 'provider-one', 'shared-model', entry => entry.verdict !== 'running');
+    assert.equal(record.error, '检测已取消');
+    assert.equal(record.answer, 'partial');
+  } finally {
+    await p.ctx.dispose();
+  }
 });

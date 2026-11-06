@@ -1,6 +1,7 @@
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createBackend, resolveBinary} from './backend.mjs';
+import {createBridge} from './bridge.mjs';
 
 export const name = 'dsh-intelligence-check';
 export const inject = ['commands', 'llm'];
@@ -30,12 +31,22 @@ async function readCatalog(llm) {
 export async function apply(ctx, config = {}) {
   const profile = ctx.profileContext;
   if (!profile?.dir) throw new Error('dsh-intelligence-check 必须在 DSH profile 中运行');
+  const bridge = await createBridge(ctx.llm);
   const backend = createBackend({
     binaryPath: resolveBinary(root, config),
     dataDir: path.join(profile.dir, 'dsh-intelligence-check'),
+    bridge,
   });
-  ctx.effect(() => () => backend.stop());
-  await backend.start();
+  ctx.effect(() => async () => {
+    await backend.stop();
+    await bridge.close();
+  });
+  try {
+    await backend.start();
+  } catch (error) {
+    await bridge.close();
+    throw error;
+  }
   const syncCatalog = () => readCatalog(ctx.llm).then(
     models => backend.setCatalog(models),
     error => console.error(`[dsh-intelligence-check] 模型目录读取失败：${error.message}`),
