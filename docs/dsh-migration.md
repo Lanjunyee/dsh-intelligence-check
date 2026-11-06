@@ -2,14 +2,16 @@
 
 本文件记录设计讨论中已经确认的范围。迁移已实现并通过真实 DSH 隔离 profile 整体验收（见 [Issue #11 验收记录](acceptance-issue-11.md)）；本文件保留原始设计边界。
 
+> **已被 ADR 0002 取代的部分**：Issue #12 起，页面改为 DSH 原生侧边栏入口与主区域页面（不再以独立网页控制台为主入口）；数据改为用户级 `$DSH_HOME/dsh-intelligence-check` 跨 profile 共享，同一用户同机只运行一套后台；后台只由桌面宿主启动，单独 CLI/Web 宿主不启动。下文涉及“不同 profile 隔离”、控制台入口和按 profile 子进程的描述仅作历史记录，以 [ADR 0002](adr/0002-native-desktop-panel-shared-backend.md) 和 [Issue #12 验收记录](acceptance-issue-12.md) 为准。
+
 ## 产品范围
 
 - 唯一宿主为 DeepSeek Harness（DSH），使用其原生插件接口。
 - 产品提供主动模型测试与报告；检测成功、失败或执行中均不阻断业务模型请求。
 - 保留现有题库、手动测试、新检测历史、人工评审、HTML/SVG 预览与 ModelTrace。
 - 旧版数据原样保留，不导入新插件。
-- 保留 Go 后端、SQLite 与独立网页控制台，由插件提供控制台入口并管理后端启动与退出。
-- 同一 profile 的各会话共享数据；不同 profile 的配置、历史、评审和后台实例隔离。
+- 保留 Go 后端、SQLite 与独立网页控制台，由插件提供控制台入口并管理后端启动与退出。（Issue #12 起独立网页仅作为兼容接口，主入口为原生页面。）
+- 同一 profile 的各会话共享数据；不同 profile 的配置、历史、评审和后台实例隔离。（Issue #12 起改为用户级共享，见 ADR 0002。）
 
 ## 模型与自动检测
 
@@ -35,7 +37,7 @@
 - 现有题库、人工评审、历史、导出、HTML/SVG 预览和 ModelTrace 继续可用。
 - 默认不自动检测；启用后仅对监测目标按配置间隔执行 milk。
 - 检测异常不阻断业务对话；关闭或卸载插件后不遗留定时任务和后台进程。
-- 两个 profile 的配置与历史互不影响；旧版数据不被覆盖。
+- 两个 profile 的配置与历史互不影响；旧版数据不被覆盖。（Issue #12 起两个 profile 共享同一用户级数据与后台，旧版数据仍不被读取或覆盖。）
 
 ## 一手资料
 
@@ -51,4 +53,4 @@
 - [宿主命令注册](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/commands.md)
 - [宿主 Web 路由](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/web-server.md)
 
-相关决定见 [ADR 0001](adr/0001-native-dsh-plugin-with-go-backend.md)，领域术语见 [GLOSSARY](../GLOSSARY.md)。
+相关决定见 [ADR 0001](adr/0001-native-dsh-plugin-with-go-backend.md) 与 [ADR 0002](adr/0002-native-desktop-panel-shared-backend.md)，领域术语见 [GLOSSARY](../GLOSSARY.md)。

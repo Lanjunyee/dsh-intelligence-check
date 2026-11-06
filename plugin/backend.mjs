@@ -14,16 +14,18 @@ export function resolveBinary(root, config = {}) {
   return path.join(root, 'bin', `quality-check${suffix}`);
 }
 
-export function createBackend({binaryPath, dataDir, bridge}) {
+export function createBackend({binaryPath, dataDir, bridge, shared = false}) {
   let child;
   let ready;
   let origin = '';
   let control = '';
   let failure = '';
+  let owner = true;
 
   function start() {
     ready ??= new Promise((resolve, reject) => {
       const args = ['-data', dataDir, '-owned'];
+      if (shared) args.push('-shared');
       if (bridge) args.push('-bridge', bridge.url, '-bridge-token', bridge.token);
       child = spawn(binaryPath, args, {stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true});
       child.stdin.on('error', () => {});
@@ -58,6 +60,7 @@ export function createBackend({binaryPath, dataDir, bridge}) {
         }
         origin = info.origin;
         control = info.control;
+        owner = info.owner !== false;
         resolve();
       });
       child.once('error', error => fail(new Error(`无法启动质量检测后台：${error.message}`)));
@@ -89,7 +92,40 @@ export function createBackend({binaryPath, dataDir, bridge}) {
     if (!response.ok) throw new Error((await response.text()).trim() || `模型目录同步失败（HTTP ${response.status}）`);
   }
 
+  async function healthy() {
+    if (!origin) return false;
+    try {
+      const response = await fetch(origin + '/health', {signal: AbortSignal.timeout(1500)});
+      await response.body?.cancel();
+      return response.status === 204;
+    } catch {
+      return false;
+    }
+  }
+
+  // A joined instance re-elects when the previous desktop owner went away. The
+  // data survives in SQLite, so a new backend serves the same shared state.
+  async function ensure() {
+    if (await healthy()) return true;
+    if (await healthy()) return true;
+    try { await stop(); } catch {}
+    ready = undefined;
+    child = undefined;
+    origin = '';
+    control = '';
+    owner = true;
+    failure = '';
+    try {
+      await start();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function stop() {
+    // A joined instance never owns the process; its helper has already exited.
+    if (!owner) return;
     const running = child;
     if (!running || running.exitCode !== null || running.signalCode !== null) return;
     const exited = new Promise(resolve => running.once('exit', resolve));
@@ -102,5 +138,5 @@ export function createBackend({binaryPath, dataDir, bridge}) {
     clearTimeout(timer);
   }
 
-  return {start, consoleUrl, setCatalog, stop};
+  return {start, ensure, healthy, consoleUrl, setCatalog, stop, get origin() { return origin; }, get control() { return control; }, get owner() { return owner; }};
 }

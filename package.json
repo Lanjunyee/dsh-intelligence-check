@@ -9,6 +9,11 @@
   "version": "0.3.0",
   "type": "module",
   "main": "./plugin/index.mjs",
+  "exports": {
+    ".": "./plugin/index.mjs",
+    "./client": "./plugin/client.js",
+    "./package.json": "./package.json"
+  },
   "icon": "./assets/plugin-icon.png",
   "files": [
     "plugin",
@@ -23,6 +28,9 @@
     "bundle": {
       "patch": "./cordis.patch.yml",
       "platforms": ["darwin", "linux", "win32"]
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "engines": {
@@ -31,6 +39,7 @@
   "scripts": {
     "test": "go test -race ./...",
     "test:plugin": "node --test plugin/*.test.mjs",
+    "build:client": "node scripts/build-client.mjs",
     "test:ui": "node --test scripts/ui.test.mjs",
     "test:package": "node scripts/package-check.mjs",
     "test:dsh-profile": "node scripts/dsh-profile-check.mjs",

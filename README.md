@@ -2,31 +2,31 @@
 
 项目仓库：[Lanjunyee/dsh-intelligence-check](https://github.com/Lanjunyee/dsh-intelligence-check)。
 
-项目已迁移为 DeepSeek Harness 原生模型质量测试与报告插件，复用宿主模型配置与凭据，保留 Go 后端和独立网页控制台，检测结果不阻断业务请求。迁移设计见 [设计文档](docs/dsh-migration.md)，实现规格见 [Issue #1](https://github.com/Lanjunyee/dsh-intelligence-check/issues/1)。
+项目已迁移为 DeepSeek Harness 原生模型质量测试与报告插件，复用桌面应用的模型配置与凭据，保留 Go 后端与 SQLite，检测结果不阻断业务请求。入口已从斜杠命令与独立网页控制台迁入 DSH 全局侧边栏，并在主区域展示原生检测页面；同一用户、同一台机器的所有工作目录与 profile 共享检测状态和一套后台。设计见 [ADR 0002](docs/adr/0002-desktop-panel-and-shared-check-state.md)，实现规格见 [Issue #12](https://github.com/Lanjunyee/dsh-intelligence-check/issues/12)。
 
-**当前状态：迁移已完成。DSH 原生插件入口、官方 bundle/五平台分发、宿主模型目录与 `ctx.llm.stream()` 桥接、取消/异常/用量行为、历史/评审/导出/预览、手动 ModelTrace 和默认关闭的定时 milk 自动检测均已实现，并通过最终 tarball 在真实 DSH `0.2.2-rc.1` 隔离 profile 中完成整体验收（见 [验收记录](docs/acceptance-issue-11.md)）。**
+**当前状态：Issue #12 已实现。原生侧边栏入口与主区域页面、用户级共享存储、单后台与桌面配置权威、桌面退出清理、CLI 不启动后台、题库/手动检测/自动检测/历史/人工评审/导出/HTML/SVG 预览/ModelTrace 均已接入，并在真实 DSH `0.2.2-rc.1` Web 宿主中完成浏览器验收（见 [验收记录](docs/acceptance-issue-12.md)）。**
 
 当前实现是 DSH 原生 Cordis 插件，对指定的模型执行主动质量检测并保存报告；检测运行、失败或异常结果均不拦截业务请求，也不改写业务模型路由。
 
 项目由两部分组成：
 
-- **DSH 插件**：`plugin/index.mjs` 按 profile 启动 Go 后台，注册控制台命令与同源入口，并在卸载时回收后台；模型目录与检测调用经插件桥接到宿主 `ctx.llm.stream()`，复用宿主 provider 配置与凭据。
-- **Go 后台**：`cmd/quality-check` 提供本机管理 API、SQLite 状态存储、模型检测和临时远程控制台。管理页面嵌入在 Go 二进制中。
+- **DSH 插件**：`plugin/index.mjs` 在 DSH 桌面宿主中启动唯一的共享 Go 后台，`plugin/client.js` 把“模型质量检测”注册到全局侧边栏并打开主区域原生页面；模型目录与检测调用经插件桥接到桌面宿主的 `ctx.llm.stream()`，复用桌面 provider 配置与凭据。单独启动 CLI 不启动检测后台。
+- **Go 后台**：`cmd/quality-check` 提供本机管理 API、SQLite 状态存储、模型检测、临时远程控制台和原有嵌入页面。共享后台由桌面宿主管理，页面通过宿主同源路由访问。
 
 ## 工作流程
 
 ```text
-控制台 -> 手动/定时质量检测 -> 插件桥接 -> DSH 宿主模型调用 -> 保存回答、评估与人工评审
+DSH 侧边栏 -> 主区域原生检测页面 -> 手动/定时质量检测 -> 插件桥接 -> 桌面宿主模型调用 -> 保存回答、评估与人工评审
 业务客户端 -> DSH -> 上游模型（不经过检测结果判断）
 ```
 
 检测是主动测试与报告功能。目标可以加入监测范围，也可以随时手动运行任意题目；检测状态和结果不影响业务请求是否发往上游。
 
-同一目标的并发检测会合并；检测期间不能重复发起同一目标的检测。
+同一用户、同一台机器的所有 DSH 工作目录与 profile 共享检测配置、监测目标、记录、人工评审及一套后台。多个入口同时使用时不会因数据目录锁出现第二个入口不可用；只有一套自动检测调度。切换页面或关闭检测面板不停止自动检测；退出 DSH 桌面应用时插件后台及活动任务一起结束。
 
 ## 安装
 
-本包以 DSH 官方 bundle 分发：`package.json` 声明 `dsh.bundle.patch` 与 `dsh.bundle.platforms`，`cordis.patch.yml` 插入 `dsh-intelligence-check` 插件行，`engines.dsh` 限定 `>=0.2.0 <0.3.0`。已在 DSH `0.2.2-rc.1` 验证。包清单的 `icon` 指向 `assets/plugin-icon.png`（小于 256 KiB），完整图标资源仍随包分发。
+本包以 DSH 官方 bundle 分发：`package.json` 声明 `dsh.bundle.patch`、`dsh.bundle.platforms` 与 `dsh.client`（`platform: web`），`cordis.patch.yml` 插入 `dsh-intelligence-check` 插件行，`exports["./client"]` 提供原生页面 bundle，`engines.dsh` 限定 `>=0.2.0 <0.3.0`。已在 DSH `0.2.2-rc.1` 验证。包清单的 `icon` 指向 `assets/plugin-icon.png`（小于 256 KiB），完整图标资源仍随包分发。
 
 ### 从发行包安装（使用者无需 Go）
 
@@ -34,8 +34,9 @@
 
 ```sh
 dsh plugin --profile <name> add /absolute/path/to/dsh-intelligence-check-darwin-arm64.tgz
-dsh --profile <name>
 ```
+
+安装后启动 **DSH 桌面应用**，在全局侧边栏选择“模型质量检测”，完整页面会在主区域打开。不需要斜杠命令、复制链接或外部浏览器。
 
 | 平台 | 安装包 |
 | --- | --- |
@@ -47,21 +48,23 @@ dsh --profile <name>
 
 每个包只含本平台 `bin/quality-check`（Windows 为 `.exe`）。插件按宿主平台优先选择包内 `bin/quality-check-<platform>-<arch>`，发行包内回退到 `bin/quality-check`；也可用 `binaryPath` 覆盖。
 
-启动后使用 `/dsh-intelligence-check` 命令，或在同一宿主打开 `/dsh-intelligence-check`，取得一次性控制台链接。后台与数据位于 `$DSH_HOME/profiles/<name>/dsh-intelligence-check/`；不同 profile 互不共享，旧版 `~/.config/dsh-intelligence-check` 数据不会被读取或改写。
+共享数据位于 `$DSH_HOME/dsh-intelligence-check/`（未设置 `DSH_HOME` 时为 `~/.dsh/dsh-intelligence-check/`），由同一用户的全部工作目录与 profile 共同使用。新版从空数据开始，不读取、迁移或合并旧 profile 数据；旧数据不会被删除，也无需为迁移备份。单独启动 `dsh` CLI（包括 `dsh web`）只加载页面，不启动检测后台，页面会显示后台不可用。
 
-卸载：`dsh plugin --profile <name> remove dsh-intelligence-check`。卸载不会删除 profile 数据目录。
+卸载：`dsh plugin --profile <name> remove dsh-intelligence-check`。卸载不会删除用户级共享数据目录。
 
 ### 开发检出
 
 ```sh
 dsh --profile <name> --from-default-profile web
 dsh plugin --profile <name> add /absolute/path/to/dsh-intelligence-check
-dsh --profile <name>
+node scripts/build-client.mjs
 ```
+
+然后在 DSH 桌面应用中使用该 profile，从侧边栏打开原生页面。仅运行 `dsh --profile <name>`（CLI/Web 宿主）不会启动共享后台；这是桌面应用独占的生命周期边界。原生页面 bundle 由 `plugin/client-core.mjs`、`plugin/client-panel.js` 与 ModelTrace 评分核心生成，修改源码后需重新执行 `node scripts/build-client.mjs`。
 
 ### 从源码构建
 
-需要 Go `1.26` 工具链；只有维护者构建发行包时需要：
+需要 Go `1.26` 或更高工具链；只有维护者构建发行包时需要：
 
 ```sh
 go build -o bin/quality-check ./cmd/quality-check
@@ -84,16 +87,16 @@ cd dist && shasum -a 256 -c SHA256SUMS
 
 ## 首次配置
 
-1. 在 DSH 会话中执行 `/dsh-intelligence-check`，或打开宿主同源入口 `/dsh-intelligence-check`，取得一次性控制台链接。
-2. 在“模型监测”页从宿主模型目录选择提供方和模型，添加检测目标；每个目标可单独打开“监测”开关。
+1. 启动 DSH 桌面应用，在全局侧边栏点击“模型质量检测”，主区域打开原生检测页面。
+2. 在“模型监测”页从桌面应用的模型目录选择提供方和模型，添加检测目标；每个目标可单独打开“监测”开关。
 3. 点击右上角设置图标配置每日每模型请求上限，以及是否开启定时自动检测和间隔；自动检测默认关闭，默认间隔 900 秒（15 分钟）。
 4. 在质量题库中选择模型和题目手动运行检测，或在“模型监测”页对目标执行“重新检测”。
 
-自动检测开启后，后台只对已打开“监测”的目标按间隔执行 milk，不依赖业务对话，其余质量题与 ModelTrace 仍需手动运行。关闭自动检测或移除监测目标后不再产生后续定时调用；配置按 profile 保存，重启后继续生效。检测不拦截业务请求。
+自动检测开启后，后台只对已打开“监测”的目标按间隔执行 milk，不依赖业务对话，其余质量题与 ModelTrace 仍需手动运行。关闭自动检测或移除监测目标后不再产生后续定时调用；配置在用户级共享数据目录中保存，切换工作目录或 profile、重启桌面应用后继续生效。关闭检测面板或切换到其他 DSH 页面不会停止已开启的自动检测；重新打开页面即可查看结果。检测不拦截业务请求。
 
-## 远程控制台
+## 内部 Go 控制台（兼容保留）
 
-DSH 原生入口只签发本机回环控制台链接。Go 后台仍保留临时 Cloudflare 通道接口供既有检查直接调用，但 DSH 插件未提供对应入口；正常使用不需要该通道。以下行为仅适用于直接调用该接口的既有检查：
+产品入口是 DSH 原生页面，不再是独立网页控制台。Go 后台仍保留原有嵌入页面与临时 Cloudflare 通道接口，供既有检查脚本和直接调用管理 API 的维护者使用；DSH 插件不再签发控制台链接或提供远程入口。以下行为仅适用于直接调用该接口的既有检查：
 
 - 一次性 `/open/...` 链接有效 10 分钟；
 - 浏览器会话最长 30 分钟；
@@ -207,18 +210,19 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 - `binaryPath`：指定 Go 后台二进制；省略时按平台选择包内 `bin/quality-check-<platform>-<arch>`。
 
-数据目录固定为当前 profile 的 `dsh-intelligence-check/` 子目录，不接受覆盖，以保证同 profile 共享、跨 profile 隔离。停用、退出或重启不会清除数据；卸载插件也不会自动删除数据目录，请按需手动备份或清理。
+数据目录固定为用户级 `$DSH_HOME/dsh-intelligence-check/`（默认 `~/.dsh/dsh-intelligence-check/`），不接受 profile 目录覆盖，以保证同一用户同机共享、避免第二套后台争用数据目录锁。停用、退出或重启不会清除数据；卸载插件也不会自动删除共享数据目录，请按需手动清理。新版不读取旧版按 profile 保存的数据。
 
-同一个 profile 只启动一个检测后台，该 profile 的所有会话共享它。不同 profile 使用各自的数据目录与后台进程。
+同一用户同机只运行一套检测后台与自动检测调度。首个桌面宿主实例持有数据目录锁并成为模型目录权威；其他 profile 的宿主读取同一连接并复用该后台，不覆盖桌面模型配置。持有实例退出后，仍在运行的桌面宿主会重新选举并继续使用同一 SQLite 状态。
 
 ## 限制与兼容性
 
-- 原生插件入口、profile 后台、退出清理、官方 bundle/五平台分发、宿主模型目录与桥接、以及默认关闭的定时 milk 自动检测已实现；
-- 自动检测只在插件后台运行期间执行，不提供宿主退出后的守护进程或停机补跑；关闭、禁用、卸载或退出时停止后续定时调用并取消活动调用；
+- 原生侧边栏入口、主区域页面、用户级共享存储、单后台、桌面退出清理、官方 bundle/五平台分发、宿主模型目录与桥接、以及默认关闭的定时 milk 自动检测已实现；
+- 检测后台只由 DSH 桌面宿主启动。单独启动 CLI 或 `dsh web` 不启动后台；没有桌面宿主时页面显示后台不可用；
+- 自动检测只在桌面宿主后台运行期间执行，不提供宿主退出后的守护进程或停机补跑；关闭、禁用、卸载或退出时停止后续定时调用并取消活动调用；
 - 检测结果不参与业务请求放行、拒绝、暂停或模型切换；
-- 当前控制台的检测目标来自宿主模型目录，模型调用经插件桥接到 `ctx.llm.stream()`，复用宿主 provider 配置与凭据；
-- 五个平台的发行包由最终集成源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装与运行，其余平台未在本机运行；
-- 最终产物与整体验收记录见 [Issue #11 验收记录](docs/acceptance-issue-11.md)。
+- 检测目标来自桌面应用的模型目录，模型调用经插件桥接到 `ctx.llm.stream()`，复用桌面 provider 配置与凭据；其他 profile 不会覆盖该目录；
+- 五个平台的发行包由最终集成源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装与 Web 宿主验收；真实 DSH 桌面应用窗口内的点击验收受自动化工具限制，见验收记录中的说明；
+- 最终产物与整体验收记录见 [Issue #12 验收记录](docs/acceptance-issue-12.md)。
 - Cloudflare Quick Tunnel 是临时通道，不保证公网可用性或稳定性；DSH 原生入口不依赖该通道。
 
 ## 开发与验收
@@ -228,67 +232,69 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 ```sh
 go test -race ./...
 go vet ./...
+node scripts/build-client.mjs
 node --test plugin/*.test.mjs
 node --test scripts/ui.test.mjs
 ```
 
+`plugin/client.test.mjs` 校验原生页面的注册契约、各标签页渲染和共享纯函数；`scripts/ui.test.mjs` 校验 Go 内嵌页面的既有资源。
+
 构建发行包和校验清单：
 
 ```sh
+node scripts/build-client.mjs
 node scripts/build-release.mjs
 node scripts/package-check.mjs
 node scripts/install-check.mjs
-DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-profile-check.mjs
 ```
 
-可选的集成检查：
+可选的集成检查（使用隔离 `DSH_HOME`；`DSH_PLUGIN_PACKAGE` 指定要安装的 tarball 或检出目录，`DSH_INTELLIGENCE_CHECK_TEST_BINARY` 指定当前源码构建的后台）：
 
 ```sh
 DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-profile-check.mjs
 DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-lifecycle-check.mjs
 DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-auto-check.mjs
-DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/browser-check.mjs
-```
-
-设置 `DSH_PLUGIN_PACKAGE` 时，脚本安装该 tarball 并由包内后台运行，不使用 `binaryPath` 覆盖。
-
-可选的集成检查：
-
-```sh
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-profile-check.mjs
-DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-auto-check.mjs
 node scripts/plugin-check.mjs
 node scripts/cloudflare-check.mjs
 node scripts/browser-check.mjs
 node scripts/auth-browser-check.mjs
 ```
 
+集成脚本通过 `DSH_INTELLIGENCE_CHECK_DESKTOP=1` 模拟桌面宿主的后台生命周期头；真实桌面应用依赖宿主注入的 `DSH_CLIENT_VERSION` 判定。脚本不会启动用户自己的桌面实例，也不会读写用户旧 profile 数据。
+
 其中：
 
+- `build-client.mjs` 把原生页面源码与 ModelTrace 评分核心组装为 DSH 模块加载器要求的 `plugin/client.js`；
 - `build-release.mjs` 交叉编译五个平台后台，用 `npm pack` 生成每平台只含本平台后台的官方 bundle tarball，并写入 `manifest.json` 与 `SHA256SUMS`；
-- `package-check.mjs` 检查包标识、`dsh.bundle` 格式、图标大小、每平台布局、可执行位、checksum 与无 Go 源码；
-- `install-check.mjs` 解压当前平台发行包并验证插件可启动、签发控制台；
-- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生插件加载、宿主入口、同 profile 跨会话共享配置/记录/评审、跨 profile 隔离、禁用/退出清理与卸载；`DSH_BINARY` 可指定 DSH 可执行文件，`DSH_PLUGIN_PACKAGE` 可指定要安装的 tarball 或检出目录；
+- `package-check.mjs` 检查包标识、`dsh.bundle`/`dsh.client` 声明、`./client` 导出、图标大小、每平台布局、可执行位、checksum 与无 Go 源码；
+- `install-check.mjs` 解压当前平台发行包并验证插件与客户端 bundle 可加载、后台可启动和清理；
+- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生侧边栏页面、用户级共享状态、单后台、桌面模型目录权威、跨 profile 会话、HTML/SVG 预览、人工评审、ModelTrace、桌面退出/接管清理、CLI 不启动后台与 HMR 重载；浏览器可用时通过 Playwright 点击侧边栏并操作主区域页面；
 - `dsh-lifecycle-check.mjs` 使用真实宿主桥接验证完整/缺用量/错误/截断/取消/独立复测/同名目标隔离/取消后重跑与重启持久化；
-- `dsh-auto-check.mjs` 使用隔离 `DSH_HOME` 和本地受控模型服务，以短间隔验证自动检测默认关闭、仅监测目标 milk、无业务对话触发、关闭/移除停止、并发合并、预算与清理、重启配置及退出取消；浏览器可用时通过控制台 UI 开启自动检测并设置间隔；
-- `plugin-check.mjs` 验证已安装包的原生插件启动、管理链接和清理；
-- `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭；
-- `browser-check.mjs` 使用真实隔离 DSH profile、宿主配置的受控 OpenAI 兼容服务和 Playwright，验证七题原文、provider + model 路由、实时增量、历史/评审/导出/下载/复制、HTML/SVG 隔离预览、手动 ModelTrace、回答/评估/用量持久化与业务会话并行；`DSH_INTELLIGENCE_CHECK_TEST_BINARY` 可指定当前源码构建的后台二进制，`PLAYWRIGHT_MODULE` 可指定模块位置。
-- `auth-browser-check.mjs` 使用真实浏览器验证从外部页面打开管理链接、票据重定向和会话刷新。
+- `dsh-auto-check.mjs` 使用隔离 `DSH_HOME` 和本地受控模型服务，以短间隔验证自动检测默认关闭、仅监测目标 milk、无业务对话触发、关闭/移除停止、并发合并、预算与清理、重启配置及退出取消；浏览器可用时通过原生页面开启自动检测并设置间隔，关闭页面后继续观察定时调用；
+- `plugin-check.mjs` 验证已安装包的原生插件启动共享后台、提供页面 API 并清理进程；
+- `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭（内部兼容接口）；
+- `browser-check.mjs` 使用真实隔离 DSH profile、宿主配置的受控 OpenAI 兼容服务和 Playwright，验证七题原文、provider + model 路由、实时增量、历史/评审/导出/下载/复制、HTML/SVG 隔离预览、手动 ModelTrace、回答/评估/用量持久化与业务会话并行；`PLAYWRIGHT_MODULE` 可指定模块位置；
+- `auth-browser-check.mjs` 使用真实浏览器验证 Go 内嵌页面的管理链接、票据重定向和会话刷新（内部兼容接口）。
 
 运行时检测链路的 Go 测试使用受控模型响应，覆盖手动 milk、评分、独立复测、预算、取消、记录持久化和传输边界；不依赖业务请求被拦截。
 
 ## 目录结构
 
 ```text
-cmd/quality-check/       Go 后台入口
-internal/check/          状态、检测传输边界、HTTP 控制台和存储
-internal/check/web/      嵌入 Go 二进制的管理页面
-plugin/index.mjs         DSH 原生 Cordis 插件入口
-plugin/backend.mjs       Go 后台进程启动、控制台链接签发与退出回收
+cmd/quality-check/       Go 后台入口（桌面共享实例、连接文件与生命周期）
+internal/check/          状态、检测传输边界、HTTP 控制台和用户级共享存储
+internal/check/web/      嵌入 Go 二进制、仅作为兼容入口的管理页面
+internal/check/web/modeltrace/  ModelTrace 评分核心（构建时内联到原生页面）
+plugin/index.mjs         DSH 原生 Cordis 插件入口：桌面判定、共享后台、同源代理
+plugin/backend.mjs       Go 后台进程启动、所有权/接管、控制台链接签发与退出回收
+plugin/client-core.mjs   原生页面纯函数（标签、用量、日期、评分呈现）
+plugin/client-panel.js   原生侧边栏入口与主区域页面（React）
+plugin/client.js         构建产物：DSH 模块加载器工厂 bundle
+scripts/build-client.mjs 组装原生页面 bundle
+scripts/                 构建、集成和客户端验收脚本
 cordis.patch.yml         DSH bundle 的插件行
 plugin/cloudflared-runtime.mjs  Cloudflare 客户端发现、下载和校验
-scripts/                 构建、集成和客户端验收脚本
 third_party/cloudflared/ Cloudflare 客户端许可文件
 ```
 

@@ -1,38 +1,49 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {createRequire} from 'node:module';
 import {existsSync} from 'node:fs';
 import {readFile, rm, writeFile} from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
+import {createRequire} from 'node:module';
 import {backendBinary, createDshHarness, getState, openConsoleSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
 
 const {home, work, env, hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
   prefix: 'dsh-ic',
-  env: {DSH_IC_LOCAL_KEY: 'local-test-key'},
+  env: {DSH_IC_LOCAL_KEY: 'local-controlled-key'},
 });
-const backend = backendBinary();
-const packageSpec = process.env.DSH_PLUGIN_PACKAGE || path.resolve(import.meta.dirname, '..');
-assert.ok(existsSync(backend), `缺少后台二进制，请先构建：go build -o bin/quality-check ./cmd/quality-check（或设置 DSH_INTELLIGENCE_CHECK_TEST_BINARY）`);
+const sharedDir = path.join(home, 'dsh-intelligence-check');
+assert.ok(existsSync(backendBinary()), `缺少后台二进制，请先构建：go build -o bin/quality-check ./cmd/quality-check`);
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const bundledPlaywright = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
 const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundledPlaywright) ? bundledPlaywright : '');
 const {chromium} = playwrightPath ? createRequire(import.meta.url)(playwrightPath) : {};
 
-const mockRequests = [];
+const requests = [];
 const mock = http.createServer(async (request, response) => {
   if (request.url?.endsWith('/models')) {
     response.setHeader('content-type', 'application/json');
-    response.end(JSON.stringify({object: 'list', data: [{id: 'shared-model', object: 'model'}]}));
+    response.end(JSON.stringify({object: 'list', data: ['shared-model', 'html-model', 'svg-model'].map(id => ({id, object: 'model'}))}));
     return;
   }
   let raw = '';
   for await (const chunk of request) raw += chunk;
-  mockRequests.push(JSON.parse(raw).model);
+  const body = JSON.parse(raw);
+  const content = body.messages?.find(message => message.role === 'user')?.content;
+  const prompt = typeof content === 'string' ? content : (content || []).map(part => part.text || '').join('');
+  requests.push({model: body.model, prompt});
+  let answer = '46.24 inches';
+  const traceCount = prompt.match(/(\d+)\s*个\s*1 到 355/);
+  if (traceCount) {
+    answer = Array.from({length: Number(traceCount[1])}, (_, index) => 1 + (index * 37) % 355).join(', ');
+  } else if (prompt.includes('鹈鹕骑自行车')) {
+    answer = '```html\n<!doctype html><html><body><h1 id="pelican">Pelican rides</h1><script>parent.postMessage({type:"intelligence-preview-ready"},"*")</script></body></html>\n```';
+  } else if (prompt.includes('pelican riding a bicycle')) {
+    answer = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="80"><rect width="120" height="80" fill="#d33"/><circle cx="60" cy="40" r="24" fill="#fff"/></svg>';
+  }
   response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
   const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
-  event({choices: [{index: 0, delta: {content: '46.24 inches'}}]});
+  event({choices: [{index: 0, delta: {content: answer}}]});
   event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
   event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17}});
   response.end('data: [DONE]\n\n');
@@ -40,9 +51,9 @@ const mock = http.createServer(async (request, response) => {
 await new Promise(resolve => mock.listen(0, '127.0.0.1', resolve));
 const mockPort = mock.address().port;
 
-function providers() {
-  const provider = name => `      ${name}:
-        displayName: ${name === 'fixture-one' ? 'Fixture One' : 'Fixture Two'}
+function provider(id, name, models) {
+  return `      ${id}:
+        displayName: ${name}
         apiKeyEnv: DSH_IC_LOCAL_KEY
         api: openai-completions
         baseURL: http://127.0.0.1:${mockPort}/v1
@@ -50,12 +61,24 @@ function providers() {
           supportsDeveloperRole: false
           maxTokensField: max_tokens
         models:
-          - id: shared-model
-            name: Shared Model
+${models.map(model => `          - id: ${model}
+            name: ${model}
             contextWindow: 32768
             maxTokens: 1024
-            input: [text]`;
-  return `${provider('fixture-one')}\n${provider('fixture-two')}`;
+            input: [text]`).join('\n')}`;
+}
+
+function patch(providerId) {
+  const models = providerId === 'fixture-one' ? ['shared-model', 'html-model', 'svg-model'] : ['shared-model'];
+  return `- id: llm-pi-ai
+  config:
+    providers:
+${provider(providerId, providerId === 'fixture-one' ? 'Fixture One' : 'Fixture Two', models)}
+- id: agent-default-model
+  config:
+    provider: ${providerId}
+    model: shared-model
+${pluginConfigOverride()}`;
 }
 
 async function uninstallProfile(name) {
@@ -69,64 +92,24 @@ async function uninstallProfile(name) {
   assert.ok(!dump.stdout.includes('# == dsh-intelligence-check'), '卸载后配置仍包含插件层');
 }
 
-function profilePatch() {
-  return `- id: llm-pi-ai
-  config:
-    providers:
-${providers()}
-- id: agent-default-model
-  config:
-    provider: fixture-one
-    model: shared-model
-${pluginConfigOverride()}`;
-}
-
-async function openEntry(host) {
-  const {console, payload} = await openConsoleSession(host, {requireLogin: true});
-  assert.match(console.location, /\/open\/[0-9a-f]{48}$/);
-  return {location: console.location, session: console.session, state: payload.state};
-}
-
-async function addTarget(console, provider, model) {
-  const {status, text} = await postJSON(console, '/api/target', {provider, model, enabled: false});
+async function post(client, pathname, body) {
+  const {status, text} = await postJSON(client, pathname, body);
   assert.equal(status, 200, text);
 }
 
-async function post(console, pathname, body) {
-  const {status, text} = await postJSON(console, pathname, body);
-  assert.equal(status, 200, text);
+async function stateOf(client) {
+  return (await getState(client)).state;
 }
 
-async function stateOf(console) {
-  return (await getState(console)).state;
-}
-
-async function waitResult(console) {
-  for (let i = 0; i < 300; i++) {
-    const state = await stateOf(console);
-    const record = state.results.find(entry => entry.verdict !== 'running');
-    if (record && state.results.every(entry => entry.verdict !== 'running')) return state;
+async function waitResult(client, providerId, model, prompt, predicate, timeout = 30000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const record = [...(await stateOf(client)).results].reverse()
+      .find(entry => entry.provider === providerId && entry.model === model && entry.prompt === prompt);
+    if (record && predicate(record)) return record;
     await wait(100);
   }
-  throw new Error('真实宿主检测未在预期时间完成');
-}
-
-function identity(target) {
-  return `${target.provider}|${target.model}`;
-}
-
-function catalogIdentities(response) {
-  return (response.catalog || []).map(entry => `${entry.provider}|${entry.model}`).sort();
-}
-
-async function waitForCatalog(console) {
-  const wanted = ['fixture-one|shared-model', 'fixture-two|shared-model'];
-  for (let i = 0; i < 60; i++) {
-    const response = await (await fetch(new URL('/api/state', console.location), {headers: {cookie: console.session}})).json();
-    if (wanted.every(item => catalogIdentities(response).includes(item))) return response;
-    await wait(500);
-  }
-  throw new Error('宿主模型目录未包含两个受控 provider 的同名模型');
+  throw new Error(`${providerId}/${model}/${prompt} 检测未达到预期状态`);
 }
 
 function processes(dataDir) {
@@ -134,28 +117,72 @@ function processes(dataDir) {
     .split('\n').filter(line => line.includes(dataDir));
 }
 
+async function waitForProcessCount(count, timeout = 8000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (processes(sharedDir).length === count) return;
+    await wait(100);
+  }
+  assert.equal(processes(sharedDir).length, count, `共享后台进程数不是 ${count}`);
+}
+
 let browser;
 let uiChecked = false;
 try {
   const version = dshRun(['--version']).stdout.trim();
   assert.match(version, /^\d+\.\d+\.\d+/);
-  await installProfile('check-a', profilePatch());
-  await installProfile('check-b', profilePatch());
-  let a = await bootProfile('check-a');
-  const b = await bootProfile('check-b');
-  const dataA = path.join(home, 'profiles', 'check-a', 'dsh-intelligence-check');
-  const dataB = path.join(home, 'profiles', 'check-b', 'dsh-intelligence-check');
-  assert.ok(existsSync(path.join(dataA, 'check.db')), 'profile A 未使用自己的数据目录');
-  assert.ok(existsSync(path.join(dataB, 'check.db')), 'profile B 未使用自己的数据目录');
-  assert.notEqual(a.origin(), b.origin());
+  await installProfile('check-a', patch('fixture-one'));
+  await installProfile('check-b', patch('fixture-two'));
 
-  const first = await openEntry(a);
-  let catalog = await waitForCatalog(first);
-  const catalogIds = catalogIdentities(catalog);
-  for (const wanted of ['fixture-one|shared-model', 'fixture-two|shared-model']) {
-    assert.ok(catalogIds.includes(wanted), `目录缺少 ${wanted}`);
+  const a = await bootProfile('check-a');
+  assert.ok(existsSync(path.join(sharedDir, 'check.db')), '共享数据目录未创建');
+  assert.equal(existsSync(path.join(home, 'profiles', 'check-a', 'dsh-intelligence-check', 'check.db')), false,
+    '新版仍在 profile 目录创建数据');
+  const first = await openConsoleSession(a, {requireLogin: true});
+  let state = await stateOf(first.console);
+  assert.deepEqual(state.targets, []);
+  assert.equal(state.config.auto_enabled, false, '自动检测未默认关闭');
+  assert.equal(state.config.interval_seconds, 900);
+  let payload = await getState(first.console);
+  assert.deepEqual(payload.catalog.map(entry => entry.model).sort(), ['html-model', 'shared-model', 'svg-model']);
+
+  const b = await bootProfile('check-b');
+  const second = await openConsoleSession(b);
+  const joined = await getState(second.console);
+  assert.deepEqual(joined.catalog.map(entry => entry.model).sort(), ['html-model', 'shared-model', 'svg-model'],
+    '第二个 profile 覆盖了桌面模型目录');
+  assert.equal(processes(sharedDir).length, 1, '同时使用时启动了多套后台');
+
+  await post(first.console, '/api/target', {provider: 'fixture-one', model: 'shared-model', enabled: false});
+  state = await stateOf(second.console);
+  assert.deepEqual(state.targets.map(target => `${target.provider}|${target.model}|${target.enabled}`),
+    ['fixture-one|shared-model|false'], '第二个 profile 未看到共享目标');
+
+  await post(second.console, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'milk'});
+  const milk = await waitResult(first.console, 'fixture-one', 'shared-model', 'milk', record => record.verdict !== 'running');
+  assert.equal(milk.answer, '46.24 inches');
+  assert.equal(milk.usage?.total_tokens, 17);
+  await post(second.console, `/api/results/${milk.id}/review`, {decision: 'accepted', note: 'shared review'});
+  state = await stateOf(first.console);
+  assert.equal(state.results[0].review, 'accepted', '跨 profile 人工评审未共享');
+
+  // HTML and SVG works stay available to the native page preview controls.
+  await post(first.console, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'html'});
+  const html = await waitResult(first.console, 'fixture-one', 'shared-model', 'html', record => record.verdict !== 'running');
+  assert.match(html.answer, /<h1 id="pelican">/);
+  await post(first.console, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'svg'});
+  const svg = await waitResult(first.console, 'fixture-one', 'shared-model', 'svg', record => record.verdict !== 'running');
+  assert.match(svg.answer, /<svg/);
+
+  await post(first.console, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'modeltrace'});
+  for (let i = 0; i < 300; i++) {
+    const trace = (await stateOf(second.console)).results.filter(record => record.prompt === 'modeltrace');
+    if (trace.length === 3 && trace.every(record => record.verdict !== 'running')) break;
+    await wait(100);
   }
-  assert.equal(catalog.catalog.filter(entry => entry.model === 'shared-model').length, 2, '同名模型目录条目未按 provider 区分');
+  const trace = (await stateOf(second.console)).results.filter(record => record.prompt === 'modeltrace');
+  assert.equal(trace.length, 3, 'ModelTrace 未生成三条挑战');
+  assert.ok(trace.every(record => record.verdict === 'manual'), 'ModelTrace 挑战未完成');
 
   if (chromium) {
     const launchOptions = {headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge'};
@@ -165,84 +192,91 @@ try {
     }
     browser = await chromium.launch(launchOptions);
     const page = await browser.newPage();
-    const openConsole = async host => {
-      await page.goto(host.login());
-      await page.goto(host.origin() + '/dsh-intelligence-check');
-      await page.waitForFunction(() => {
-        const providers = [...document.querySelectorAll('#target select[name=provider] option')].map(option => option.value);
-        return providers.includes('fixture-one') && providers.includes('fixture-two');
-      }, {}, {timeout: 30000});
-    };
-    const addThroughUI = async (provider, model) => {
-      await page.locator('#target select[name=provider]').selectOption(provider);
-      await page.locator('#target select[name=model]').selectOption(model);
-      await page.locator('#target button').click();
-      await page.waitForFunction(({provider, model}) => [...document.querySelectorAll('#targets tr')]
-        .some(row => row.textContent.includes(provider) && row.textContent.includes(model)), {provider, model});
-    };
-    await openConsole(a);
-    await addThroughUI('fixture-one', 'shared-model');
-    await addThroughUI('fixture-two', 'shared-model');
-    assert.equal(await page.locator('#targets tr').count(), 2, '同名模型在界面中被合并');
-    await page.reload();
-    await page.waitForFunction(() => document.querySelectorAll('#targets tr').length === 2);
-    await stopHost(a);
-    a = await bootProfile('check-a');
-    await openConsole(a);
-    await page.waitForFunction(() => document.querySelectorAll('#targets tr').length === 2);
-    assert.equal(await page.locator('#targets tr').count(), 2, '重启后目标身份丢失');
+    page.on('pageerror', error => console.error('[ui] page error:', error.message));
+    page.on('console', message => { if (message.type() === 'error') console.error('[ui] console:', message.text()); });
+    await page.goto(a.login());
+    await page.getByText('模型质量检测', {exact: true}).first().waitFor({timeout: 30000});
+    const previewNotice = page.getByRole('button', {name: '继续'});
+    if (await previewNotice.isVisible().catch(() => false)) await previewNotice.click();
+    await page.getByText('模型质量检测', {exact: true}).first().click();
+    await page.locator('.dic-page h1').waitFor({timeout: 30000});
+    await page.getByRole('tab', {name: /模型监测/}).click();
+    await page.locator('.dic-table tbody tr').filter({hasText: 'shared-model'}).waitFor({timeout: 15000});
+    await page.getByRole('tab', {name: /质量题库/}).click();
+    await page.locator('.dic-test-controls select').nth(0).selectOption({index: 0});
+    await page.locator('.dic-test-controls select').nth(1).selectOption({label: '牛奶推理'});
+    await page.getByRole('button', {name: '运行所选题目'}).click();
+    await page.locator('pre.dic-pre').first().filter({hasText: '46.24 inches'}).waitFor({timeout: 30000});
+    await page.locator('.dic-test-controls select').nth(1).selectOption({label: 'HTML 动画'});
+    await page.getByRole('button', {name: '运行所选题目'}).click();
+    await page.locator('.dic-preview iframe').waitFor({timeout: 30000});
+    await page.frameLocator('.dic-preview iframe').locator('#pelican').waitFor({timeout: 15000});
+    await page.locator('.dic-test-controls select').nth(1).selectOption({label: 'SVG 创作'});
+    await page.getByRole('button', {name: '运行所选题目'}).click();
+    await page.locator('.dic-preview img').waitFor({timeout: 30000});
+    await page.getByRole('tab', {name: /模型指纹/}).click();
+    await page.locator('.dic-trace').waitFor({timeout: 15000});
+    await page.locator('.dic-trace-report').waitFor({timeout: 30000});
+    await page.getByText('最相似候选', {exact: true}).waitFor({timeout: 15000});
+    await page.getByRole('tab', {name: /检测记录/}).click();
+    await page.locator('.dic-record').first().waitFor({timeout: 15000});
+    await page.getByRole('button', {name: '检测预算设置'}).click();
+    await page.locator('.dic-modal input[type=checkbox]').check();
+    await page.locator('.dic-modal input[type=number]').nth(0).fill('1');
+    await page.getByRole('button', {name: '保存设置'}).click();
+    await page.locator('.dic-modal').waitFor({state: 'detached', timeout: 15000});
+    state = await stateOf(second.console);
+    assert.equal(state.config.auto_enabled, true, '原生页面未保存自动检测开关');
+    assert.equal(state.config.interval_seconds, 1, '原生页面未保存自动检测间隔');
     uiChecked = true;
     await browser.close();
     browser = undefined;
-  } else {
-    await addTarget(first, 'fixture-one', 'shared-model');
-    await addTarget(first, 'fixture-two', 'shared-model');
   }
 
-  const reopened = await openEntry(a);
-  await waitForCatalog(reopened);
-  assert.deepEqual(reopened.state.targets.map(identity).sort(), ['fixture-one|shared-model', 'fixture-two|shared-model'], '重启后目标身份丢失');
-  assert.ok(reopened.state.targets.every(target => target.enabled === false), '添加目标默认开启自动监测');
+  const persistedCount = (await stateOf(second.console)).results.length;
+  assert.ok(persistedCount >= 3, '检测记录未保存');
 
-  const second = await openEntry(a);
-  assert.deepEqual(second.state.targets.map(identity).sort(), ['fixture-one|shared-model', 'fixture-two|shared-model'], '同一 profile 的会话未共享记录');
-  await post(second, '/api/config', {daily_limit: 55, auto_enabled: false, interval_seconds: 900});
-  await post(second, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'milk'});
-  const withRecord = await waitResult(second);
-  assert.equal(withRecord.results.length, 1, '真实宿主检测未生成记录');
-  assert.equal(mockRequests.length, 1, '真实宿主检测未经过受控模型服务');
-  assert.equal(withRecord.results[0].answer, '46.24 inches');
-  assert.equal(withRecord.results[0].usage?.total_tokens, 17);
-  await post(second, `/api/results/${withRecord.results[0].id}/review`, {decision: 'accepted', note: 'profile isolation review'});
-  const shared = await openEntry(a);
-  assert.equal(shared.state.results.length, 1, '同一 profile 的另一个会话未共享检测记录');
-  assert.equal(shared.state.results[0].review, 'accepted', '同一 profile 的另一个会话未共享人工评审');
-  assert.equal(shared.state.config.daily_limit, 55, '同一 profile 的另一个会话未共享配置');
-  const isolated = await openEntry(b);
-  assert.deepEqual(isolated.state.targets, [], '跨 profile 目标串用');
-  assert.deepEqual(isolated.state.results, [], '跨 profile 检测记录或评审串用');
-  assert.equal(isolated.state.config.daily_limit, 120, '跨 profile 配置串用');
+  // The owner leaves; the remaining desktop host re-elects over the same SQLite state.
+  await stopHost(a);
+  await waitForProcessCount(0);
+  const recovered = await getState(second.console);
+  assert.deepEqual(recovered.state.targets.map(target => `${target.provider}|${target.model}`), ['fixture-one|shared-model'],
+    '接管后共享目标丢失');
+  assert.equal(recovered.state.results.length, persistedCount, '接管后检测记录丢失');
+  assert.deepEqual(recovered.catalog.map(entry => entry.model), ['shared-model'],
+    '接管后未使用剩余桌面 profile 的模型目录');
+  assert.equal(processes(sharedDir).length, 1, '接管后后台数量异常');
 
+  await stopHost(b);
+  await waitForProcessCount(0);
+
+  // A pure CLI host must not own the backend.
+  await installProfile('check-cli', patch('fixture-one'));
+  const cli = await bootProfile('check-cli', {...env, DSH_INTELLIGENCE_CHECK_DESKTOP: undefined},
+    {readyMarker: '[dsh-intelligence-check] CLI host detected'});
+  const cliLogin = await openConsoleSession(cli).catch(error => error);
+  assert.ok(cliLogin instanceof Error, 'CLI 主机的页面 API 不应可用');
+  assert.match(cliLogin.message, /401|503/, cliLogin.message);
+  assert.equal(processes(sharedDir).length, 0, 'CLI 主机启动了桌面后台');
+  await stopHost(cli);
+  await uninstallProfile('check-cli');
+
+  // Re-enabling a running desktop profile restores the single backend.
+  const again = await bootProfile('check-a');
+  await openConsoleSession(again);
   const patchPath = path.join(home, 'profiles', 'check-a', 'cordis.patch.yml');
   const originalPatch = await readFile(patchPath, 'utf8');
   await writeFile(patchPath, originalPatch + '- id: dsh-intelligence-check\n  disabled: true\n');
-  for (let i = 0; i < 100 && processes(dataA).length; i++) await wait(100);
-  assert.equal(processes(dataA).length, 0, '运行中禁用插件后残留后台进程');
+  await waitForProcessCount(0);
   await writeFile(patchPath, originalPatch);
-  for (let i = 0; i < 150 && processes(dataA).length === 0; i++) await wait(100);
-  assert.equal(processes(dataA).length, 1, 'HMR 重新启用后未恢复后台进程');
-  const hmrReopened = await openEntry(a);
-  assert.deepEqual(hmrReopened.state.targets.map(identity).sort(), ['fixture-one|shared-model', 'fixture-two|shared-model'], 'HMR 重载后目标丢失');
-  assert.equal(hmrReopened.state.results.length, 1, 'HMR 重载后检测记录丢失');
-  const owned = processes(dataA);
-  assert.equal(owned.length, 1, 'profile A 应只有一个后台进程');
-  await stopHost(a);
-  await stopHost(b);
-  for (let i = 0; i < 50 && (processes(dataA).length || processes(dataB).length); i++) await wait(100);
-  assert.equal(processes(dataA).length + processes(dataB).length, 0, '宿主退出后残留后台进程');
-  await assert.rejects(fetch(a.origin() + '/health'));
+  await waitForProcessCount(1, 15000);
+  const reopened = await openConsoleSession(again);
+  assert.equal((await stateOf(reopened.console)).results.length, persistedCount, 'HMR 重载后检测记录丢失');
+  await stopHost(again);
+  await waitForProcessCount(0);
+
   await uninstallProfile('check-b');
-  console.log(`PASS: DSH ${version} 隔离 profile 安装 ${path.basename(packageSpec)}、模型目录、provider+model 同名模型选择/保存/重启、宿主入口、同 profile 跨会话共享配置/记录/评审、跨 profile 隔离、运行中禁用/HMR 重载/退出清理与卸载${uiChecked ? '' : '（未执行浏览器 UI 选择）'}`);
+  console.log(`PASS: DSH ${version} 原生侧边栏页面、共享状态与单后台、桌面配置权威、跨 profile 会话、HTML/SVG 预览、人工评审、桌面退出清理、CLI 不启动后台与 HMR 重载${uiChecked ? '（浏览器 UI 已验证）' : '（未执行浏览器 UI）'}`);
 } finally {
   if (browser) await browser.close();
   for (const host of hosts) await stopHost(host);

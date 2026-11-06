@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
 import {mkdtemp, rm} from 'node:fs/promises';
+import {createServer} from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -7,7 +9,10 @@ import {pathToFileURL} from 'node:url';
 const root = process.env.PLUGIN_ROOT || path.resolve(import.meta.dirname, '..');
 const {apply} = await import(pathToFileURL(path.join(root, 'plugin/index.mjs')));
 const dir = await mkdtemp(path.join(os.tmpdir(), 'quality-plugin-'));
+const dataDir = path.join(dir, 'shared');
 const disposers = [];
+const injections = [];
+const routes = [];
 const commands = [];
 const ctx = {
   profileContext: {name: 'plugin-check', dir},
@@ -21,7 +26,7 @@ const ctx = {
     return () => {};
   }},
   get() {},
-  inject() {},
+  inject(services, fn) { injections.push({services, fn}); },
   on() { return () => {}; },
   llm: {
     listProviders: () => [],
@@ -29,24 +34,43 @@ const ctx = {
   },
 };
 try {
-  await apply(ctx, process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
-    ? {binaryPath: process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY}
-    : {});
-  const [command] = commands;
-  assert.equal(command.name, 'dsh-intelligence-check');
-  const result = await command.handler({rawInput: '', agent: {}, attachments: [], signal: new AbortController().signal});
-  assert.equal(result.kind, 'success', result.text);
-  const url = result.text.match(/http:\/\/\S+/)[0];
-  const opened = await fetch(url, {redirect: 'manual'});
-  assert.equal(opened.status, 303);
-  const cookie = opened.headers.get('set-cookie').split(';')[0];
-  const state = await fetch(new URL('/api/state', url), {headers: {cookie}});
-  assert.equal(state.status, 200);
-  assert.deepEqual((await state.json()).state.targets, []);
-  const origin = new URL(url).origin;
+  await apply(ctx, {
+    desktop: true,
+    dataDir,
+    ...(process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
+      ? {binaryPath: process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY}
+      : {}),
+  });
+  assert.deepEqual(commands, [], 'the removed slash command was still registered');
+  for (const {fn} of injections) {
+    fn({
+      effect(nested) { const dispose = nested(); disposers.push(dispose); return dispose; },
+      webServer: {register(route) { routes.push(route); return () => {}; }},
+      connection: {requestRejection: () => 0},
+    });
+  }
+  const [route] = routes;
+  assert.equal(route.path, '/dsh-intelligence-check');
+  assert.equal(route.kind, 'prefix');
+  const server = createServer((request, response) => route.handler(request, response));
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const state = await (await fetch(origin + '/dsh-intelligence-check/api/state')).json();
+  assert.deepEqual(state.state.targets, []);
+  assert.deepEqual(state.state.results, []);
+  assert.equal(state.state.config.auto_enabled, false);
   while (disposers.length > 0) await disposers.pop()();
-  await assert.rejects(fetch(origin + '/health'));
-  console.log('PASS: native plugin starts the backend, issues an authorized console link and cleans up');
+  await new Promise(resolve => server.close(resolve));
+  for (let i = 0; i < 100; i++) {
+    const left = execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
+      .split('\n').filter(line => line.includes(dataDir));
+    if (left.length === 0) break;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const left = execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
+    .split('\n').filter(line => line.includes(dataDir));
+  assert.deepEqual(left, [], 'plugin disposal left the shared backend running');
+  console.log('PASS: native plugin starts the shared desktop backend, serves the page API and cleans up');
 } finally {
   await rm(dir, {recursive: true, force: true});
 }

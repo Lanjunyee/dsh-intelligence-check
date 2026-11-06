@@ -29,7 +29,7 @@ export function pluginConfigOverride() {
 export async function createDshHarness({prefix, env: extraEnv = {}, readyTimeout = 60000, stopTimeout = 10000}) {
   const home = await mkdtemp(path.join(os.tmpdir(), `${prefix}-home-`));
   const work = await mkdtemp(path.join(os.tmpdir(), `${prefix}-work-`));
-  const env = {...process.env, DSH_HOME: home, ...extraEnv};
+  const env = {...process.env, DSH_HOME: home, DSH_INTELLIGENCE_CHECK_DESKTOP: '1', ...extraEnv};
   const hosts = [];
 
   function dshRun(args) {
@@ -44,7 +44,7 @@ export async function createDshHarness({prefix, env: extraEnv = {}, readyTimeout
     await writeFile(path.join(home, 'profiles', name, 'cordis.patch.yml'), patch);
   }
 
-  async function bootProfile(name, bootEnv = env) {
+  async function bootProfile(name, bootEnv = env, {readyMarker = '[dsh-intelligence-check] backend ready'} = {}) {
     const child = spawn(dsh, ['--profile', name, '--no-open', '--port', '0'], {
       env: bootEnv, cwd: work, stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -55,7 +55,7 @@ export async function createDshHarness({prefix, env: extraEnv = {}, readyTimeout
       const timer = setTimeout(() => reject(new Error(`profile ${name} 启动超时：${errors.slice(-1500)}`)), readyTimeout);
       const check = () => {
         login ||= output.match(/dsh web: (http:\/\/\S+)/)?.[1] || '';
-        if (login && (output + errors).includes('[dsh-intelligence-check] backend ready')) {
+        if (login && (output + errors).includes(readyMarker)) {
           clearTimeout(timer);
           resolve();
         }
@@ -91,24 +91,19 @@ export function cookieHeader(response) {
 export async function openConsoleSession(host, {requireLogin = false} = {}) {
   const origin = host.origin();
   if (requireLogin) {
-    const refused = await fetch(origin + '/dsh-intelligence-check', {redirect: 'manual'});
+    const refused = await fetch(origin + '/dsh-intelligence-check/api/state');
     assert.equal(refused.status, 401, '宿主入口未要求登录');
   }
   const login = await fetch(host.login(), {redirect: 'manual'});
   assert.equal(login.status, 303, '宿主登录链接未建立浏览器会话');
   const session = cookieHeader(login);
-  const entry = await fetch(origin + '/dsh-intelligence-check', {redirect: 'manual', headers: {cookie: session}});
-  assert.equal(entry.status, 302, '宿主入口未跳转控制台');
-  const location = entry.headers.get('location');
-  const opened = await fetch(location, {redirect: 'manual'});
-  assert.equal(opened.status, 303, '控制台管理链接未完成交换');
-  const console = {location, session: cookieHeader(opened)};
-  const payload = await getState(console);
-  return {console, payload};
+  const client = {origin, session};
+  const payload = await getState(client);
+  return {console: client, client, payload};
 }
 
 export async function postJSON(client, pathname, body) {
-  const response = await fetch(new URL(pathname, client.location), {
+  const response = await fetch(client.origin + '/dsh-intelligence-check' + pathname, {
     method: 'POST',
     headers: {cookie: client.session, 'content-type': 'application/json'},
     body: JSON.stringify(body),
@@ -117,5 +112,7 @@ export async function postJSON(client, pathname, body) {
 }
 
 export async function getState(client) {
-  return (await (await fetch(new URL('/api/state', client.location), {headers: {cookie: client.session}})).json());
+  const response = await fetch(client.origin + '/dsh-intelligence-check/api/state', {headers: {cookie: client.session}});
+  assert.equal(response.status, 200, `page API state failed with ${response.status}`);
+  return response.json();
 }

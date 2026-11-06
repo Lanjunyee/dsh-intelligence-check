@@ -104,7 +104,7 @@ ${pluginConfigOverride()}`;
 
 async function installAutoProfile(name) {
   await installProfile(name, autoPatch());
-  return path.join(home, 'profiles', name, 'dsh-intelligence-check');
+  return path.join(home, 'dsh-intelligence-check');
 }
 
 async function openConsole(host) {
@@ -165,14 +165,30 @@ async function enableAutoThroughUI(host) {
   browser = await chromium.launch(options);
   const page = await browser.newPage();
   await page.goto(host.login());
-  await page.goto(host.origin() + '/dsh-intelligence-check');
-  await page.waitForFunction(() => [...document.querySelectorAll('#targets tr')]
-    .some(row => row.textContent.includes('watched-model')), {}, {timeout: 30000});
-  await page.locator('#settings').click();
-  await page.locator('input[name=auto_enabled]').check();
-  await page.locator('input[name=interval_seconds]').fill('1');
-  await page.locator('#config button.primary').click();
-  await page.waitForFunction(() => document.querySelector('#statAuto')?.textContent === '每 1 秒', {}, {timeout: 15000});
+  const entry = page.getByText('模型质量检测', {exact: true}).first();
+  await entry.waitFor({timeout: 30000});
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const notice = page.getByRole('button', {name: '继续'});
+    if (await notice.isVisible().catch(() => false)) {
+      await notice.click();
+      await page.waitForTimeout(200);
+    }
+    try {
+      await entry.click({timeout: 3000});
+      break;
+    } catch {
+      await page.waitForTimeout(300);
+    }
+  }
+  await page.locator('.dic-page h1').waitFor({timeout: 30000});
+  await page.getByRole('tab', {name: /模型监测/}).click();
+  await page.getByRole('row', {name: /auto-provider\s+watched-model\b/}).waitFor({timeout: 30000});
+  await page.getByRole('button', {name: '检测预算设置'}).click();
+  await page.locator('.dic-modal input[type=checkbox]').check();
+  await page.locator('.dic-modal input[type=number]').nth(0).fill('1');
+  await page.getByRole('button', {name: '保存设置'}).click();
+  await page.locator('.dic-modal').waitFor({state: 'detached', timeout: 15000});
+  await page.locator('.dic-overview').filter({hasText: '每 1 秒'}).waitFor({timeout: 15000});
   await browser.close();
   browser = undefined;
   return true;

@@ -52,3 +52,23 @@ process.stdout.write(JSON.stringify({origin: 'http://127.0.0.1:1', control: 'fix
     }
   });
 }
+
+test('a joined instance reports the shared owner without stopping it', {
+  skip: process.platform === 'win32' ? '该共享实例回归使用 POSIX 可执行 fixture' : false,
+}, async () => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-backend-join-'));
+  const fixture = path.join(dir, 'backend.mjs');
+  await writeFile(fixture, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({origin: 'http://127.0.0.1:9', control: 'shared-control', owner: false}) + '\\n');
+`, {mode: 0o700});
+  const backend = createBackend({binaryPath: fixture, dataDir: dir, shared: true});
+  try {
+    await backend.start();
+    assert.equal(backend.owner, false);
+    assert.equal(backend.origin, 'http://127.0.0.1:9');
+    assert.equal(backend.control, 'shared-control');
+    await backend.stop();
+  } finally {
+    await rm(dir, {recursive: true, force: true});
+  }
+});

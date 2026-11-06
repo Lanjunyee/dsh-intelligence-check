@@ -15,12 +15,15 @@ try{
  assert.equal(pkg.name,'dsh-intelligence-check');assert.equal(pkg.license,'MIT');assert.equal(pkg.magpie,undefined);
  assert.equal(pkg.dsh.bundle.patch,'./cordis.patch.yml');
  assert.deepEqual(pkg.dsh.bundle.platforms,['darwin','linux','win32']);
+ assert.equal(pkg.dsh?.client?.platform,'web');
+ assert.equal(pkg.exports?.['./client'],'./plugin/client.js');
  assert.equal(pkg.engines.dsh,'>=0.2.0 <0.3.0');
  assert.equal(pkg.icon,'./assets/plugin-icon.png');
  const binary=path.join(installed,'bin',`quality-check${suffix}`);
  const mode=(await fs.stat(binary)).mode;
  assert.ok(mode&0o111,'发行包后台二进制没有可执行权限');
  await fs.access(path.join(installed,'plugin','index.mjs'));
+ await fs.access(path.join(installed,'plugin','client.js'));
  await fs.access(path.join(installed,'cordis.patch.yml'));
  await fs.access(path.join(installed,'third_party','modeltrace','LICENSE'));
  await assert.rejects(fs.access(path.join(installed,'go.mod')),'发行包不应依赖 Go 源码');
