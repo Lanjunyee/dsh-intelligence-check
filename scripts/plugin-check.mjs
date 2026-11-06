@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
 import {mkdtemp, rm} from 'node:fs/promises';
 import {createServer} from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {backendProcesses, waitForProcessCount} from './dsh-harness.mjs';
 
 const root = process.env.PLUGIN_ROOT || path.resolve(import.meta.dirname, '..');
 const {apply} = await import(pathToFileURL(path.join(root, 'plugin/index.mjs')));
@@ -61,15 +61,8 @@ try {
   assert.equal(state.state.config.auto_enabled, false);
   while (disposers.length > 0) await disposers.pop()();
   await new Promise(resolve => server.close(resolve));
-  for (let i = 0; i < 100; i++) {
-    const left = execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
-      .split('\n').filter(line => line.includes(expectedDataDir));
-    if (left.length === 0) break;
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
-  const left = execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
-    .split('\n').filter(line => line.includes(expectedDataDir));
-  assert.deepEqual(left, [], 'plugin disposal left the shared backend running');
+  await waitForProcessCount(expectedDataDir, 0, {timeout: 5000, message: 'plugin disposal left the shared backend running'});
+  assert.deepEqual(backendProcesses(expectedDataDir), [], 'plugin disposal left the shared backend running');
   console.log('PASS: native plugin starts the shared desktop backend, serves the page API and cleans up');
 } finally {
   await rm(dir, {recursive: true, force: true});

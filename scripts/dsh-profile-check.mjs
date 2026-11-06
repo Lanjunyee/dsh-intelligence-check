@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {readFile, rm, writeFile} from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import {createRequire} from 'node:module';
-import {backendBinary, createDshHarness, getState, openPageSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
+import {
+  backendBinary, backendProcesses, createDshHarness, getState, openNativePage, openPageSession,
+  pluginConfigOverride, postJSON, waitForProcessCount,
+} from './dsh-harness.mjs';
 
 const {home, work, env, hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
   prefix: 'dsh-ic',
@@ -110,20 +112,6 @@ async function waitResult(client, providerId, model, prompt, predicate, timeout 
   throw new Error(`${providerId}/${model}/${prompt} 检测未达到预期状态`);
 }
 
-function processes(dataDir) {
-  return execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
-    .split('\n').filter(line => line.includes(dataDir));
-}
-
-async function waitForProcessCount(count, timeout = 8000) {
-  const deadline = Date.now() + timeout;
-  while (Date.now() < deadline) {
-    if (processes(sharedDir).length === count) return;
-    await wait(100);
-  }
-  assert.equal(processes(sharedDir).length, count, `共享后台进程数不是 ${count}`);
-}
-
 let browser;
 let uiChecked = false;
 try {
@@ -150,7 +138,7 @@ try {
   const joined = await getState(second.client);
   assert.deepEqual(joined.catalog.map(entry => entry.model).sort(), ['html-model', 'shared-model', 'svg-model'],
     '第二个 profile 覆盖了桌面模型目录');
-  assert.equal(processes(sharedDir).length, 1, '同时使用时启动了多套后台');
+  assert.equal(backendProcesses(sharedDir).length, 1, '同时使用时启动了多套后台');
 
   // A plain CLI/Web profile joins the running desktop backend read-only.
   const cli = await bootProfile('check-cli', {...env, DSH_INTELLIGENCE_CHECK_DESKTOP: undefined},
@@ -158,7 +146,7 @@ try {
   const cliSession = await openPageSession(cli);
   assert.deepEqual(cliSession.payload.catalog.map(entry => entry.model).sort(), ['html-model', 'shared-model', 'svg-model'],
     'CLI profile 覆盖了桌面模型目录');
-  assert.equal(processes(sharedDir).length, 1, 'CLI profile 启动了第二套后台');
+  assert.equal(backendProcesses(sharedDir).length, 1, 'CLI profile 启动了第二套后台');
 
   await post(first.client, '/api/target', {provider: 'fixture-one', model: 'shared-model', enabled: false});
   state = await stateOf(second.client);
@@ -210,16 +198,8 @@ try {
       delete launchOptions.channel;
     }
     browser = await chromium.launch(launchOptions);
-    const page = await browser.newPage();
-    page.on('pageerror', error => console.error('[ui] page error:', error.message));
+    const page = await openNativePage(browser, a.login(), {tab: /模型监测/});
     page.on('console', message => { if (message.type() === 'error') console.error('[ui] console:', message.text()); });
-    await page.goto(a.login());
-    await page.getByText('模型质量检测', {exact: true}).first().waitFor({timeout: 30000});
-    const previewNotice = page.getByRole('button', {name: '继续'});
-    if (await previewNotice.isVisible().catch(() => false)) await previewNotice.click();
-    await page.getByText('模型质量检测', {exact: true}).first().click();
-    await page.locator('.dic-page h1').waitFor({timeout: 30000});
-    await page.getByRole('tab', {name: /模型监测/}).click();
     await page.locator('.dic-table tbody tr').filter({hasText: 'shared-model'}).waitFor({timeout: 15000});
     await page.getByRole('tab', {name: /质量题库/}).click();
     await page.locator('.dic-test-controls select').nth(0).selectOption({index: 0});
@@ -257,23 +237,23 @@ try {
 
   // The owner leaves; the remaining desktop host re-elects over the same SQLite state.
   await stopHost(a);
-  await waitForProcessCount(0);
+  await waitForProcessCount(sharedDir, 0, {timeout: 8000});
   const recovered = await getState(second.client);
   assert.deepEqual(recovered.state.targets.map(target => `${target.provider}|${target.model}`), ['fixture-one|shared-model'],
     '接管后共享目标丢失');
   assert.equal(recovered.state.results.length, persistedCount, '接管后检测记录丢失');
   assert.deepEqual(recovered.catalog.map(entry => entry.model), ['shared-model'],
     '接管后未使用剩余桌面 profile 的模型目录');
-  assert.equal(processes(sharedDir).length, 1, '接管后后台数量异常');
+  assert.equal(backendProcesses(sharedDir).length, 1, '接管后后台数量异常');
 
   await stopHost(b);
-  await waitForProcessCount(0);
+  await waitForProcessCount(sharedDir, 0, {timeout: 8000});
 
   // With no desktop backend running, a CLI host must neither start nor take over one.
   const cliLogin = await openPageSession(cli).catch(error => error);
   assert.ok(cliLogin instanceof Error, 'CLI 主机的页面 API 不应可用');
   assert.match(cliLogin.message, /503/, cliLogin.message);
-  assert.equal(processes(sharedDir).length, 0, 'CLI 主机启动或接管了桌面后台');
+  assert.equal(backendProcesses(sharedDir).length, 0, 'CLI 主机启动或接管了桌面后台');
   await stopHost(cli);
   await uninstallProfile('check-cli');
 
@@ -283,13 +263,13 @@ try {
   const patchPath = path.join(home, 'profiles', 'check-a', 'cordis.patch.yml');
   const originalPatch = await readFile(patchPath, 'utf8');
   await writeFile(patchPath, originalPatch + '- id: dsh-intelligence-check\n  disabled: true\n');
-  await waitForProcessCount(0);
+  await waitForProcessCount(sharedDir, 0, {timeout: 8000});
   await writeFile(patchPath, originalPatch);
-  await waitForProcessCount(1, 15000);
+  await waitForProcessCount(sharedDir, 1, {timeout: 15000});
   const reopened = await openPageSession(again);
   assert.equal((await stateOf(reopened.client)).results.length, persistedCount, 'HMR 重载后检测记录丢失');
   await stopHost(again);
-  await waitForProcessCount(0);
+  await waitForProcessCount(sharedDir, 0, {timeout: 8000});
 
   await uninstallProfile('check-b');
   console.log(`PASS: DSH ${version} 原生侧边栏页面、共享状态与单后台、桌面配置权威、跨 profile 会话、HTML/SVG 预览、人工评审、桌面退出清理、CLI 不启动后台与 HMR 重载${uiChecked ? '（浏览器 UI 已验证）' : '（未执行浏览器 UI）'}`);

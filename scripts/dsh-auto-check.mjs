@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
-import {execFileSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import http from 'node:http';
 import path from 'node:path';
-import {backendBinary, createDshHarness, getState, openPageSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
+import {
+  backendBinary, createDshHarness, getState, openNativePage, openPageSession,
+  pluginConfigOverride, postJSON, waitForProcessCount,
+} from './dsh-harness.mjs';
 
 // Real isolated DSH profile plus a controlled host model service. Automatic
 // checks are exercised only through the host bridge; no business conversation
@@ -26,11 +28,11 @@ const aborted = [];
 let releaseExit;
 const exitReleased = new Promise(resolve => { releaseExit = resolve; });
 
-function sse(response, {pieces, finish = 'stop', usage}) {
+function sse(response, {pieces, usage}) {
   response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
   const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
   for (const piece of pieces) event({choices: [{index: 0, delta: {content: piece}}]});
-  event({choices: [{index: 0, delta: {}, finish_reason: finish}]});
+  event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
   if (usage) event({choices: [], usage});
   response.end('data: [DONE]\n\n');
 }
@@ -76,9 +78,8 @@ const controlled = http.createServer(async (request, response) => {
 await new Promise(resolve => controlled.listen(0, '127.0.0.1', resolve));
 const port = controlled.address().port;
 
-function autoPatch() {
-  const models = ['watched-model', 'unwatched-model', 'slow-model', 'budget-model', 'exit-model'];
-  return `- id: llm-pi-ai
+const autoModels = ['watched-model', 'unwatched-model', 'slow-model', 'budget-model', 'exit-model'];
+const autoPatch = `- id: llm-pi-ai
   config:
     providers:
       auto-provider:
@@ -90,7 +91,7 @@ function autoPatch() {
           supportsDeveloperRole: false
           maxTokensField: max_tokens
         models:
-${models.map(model => `          - id: ${model}
+${autoModels.map(model => `          - id: ${model}
             name: ${model}
             contextWindow: 32768
             maxTokens: 1024
@@ -100,10 +101,9 @@ ${models.map(model => `          - id: ${model}
     provider: auto-provider
     model: watched-model
 ${pluginConfigOverride()}`;
-}
 
 async function installAutoProfile(name) {
-  await installProfile(name, autoPatch());
+  await installProfile(name, autoPatch);
   return path.join(home, 'dsh-intelligence-check');
 }
 
@@ -163,25 +163,7 @@ async function enableAutoThroughUI(host) {
     delete options.channel;
   }
   browser = await chromium.launch(options);
-  const page = await browser.newPage();
-  await page.goto(host.login());
-  const entry = page.getByText('模型质量检测', {exact: true}).first();
-  await entry.waitFor({timeout: 30000});
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const notice = page.getByRole('button', {name: '继续'});
-    if (await notice.isVisible().catch(() => false)) {
-      await notice.click();
-      await page.waitForTimeout(200);
-    }
-    try {
-      await entry.click({timeout: 3000});
-      break;
-    } catch {
-      await page.waitForTimeout(300);
-    }
-  }
-  await page.locator('.dic-page h1').waitFor({timeout: 30000});
-  await page.getByRole('tab', {name: /模型监测/}).click();
+  const page = await openNativePage(browser, host.login(), {tab: /模型监测/});
   await page.getByRole('row', {name: /auto-provider\s+watched-model\b/}).waitFor({timeout: 30000});
   await page.getByRole('button', {name: '检测预算设置'}).click();
   await page.locator('.dic-modal input[type=checkbox]').check();
@@ -192,11 +174,6 @@ async function enableAutoThroughUI(host) {
   await browser.close();
   browser = undefined;
   return true;
-}
-
-function backendProcesses(dataDir) {
-  return execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
-    .split('\n').filter(line => line.includes(dataDir));
 }
 
 try {
@@ -285,8 +262,7 @@ try {
   await stopHost(host);
   for (let i = 0; i < 50 && !aborted.includes('exit-model'); i++) await wait(100);
   assert.ok(aborted.includes('exit-model'), '宿主退出未取消活动的自动模型调用');
-  for (let i = 0; i < 50 && backendProcesses(dataDir).length; i++) await wait(100);
-  assert.equal(backendProcesses(dataDir).length, 0, '宿主退出后残留后台进程');
+  await waitForProcessCount(dataDir, 0, {timeout: 5000, message: '宿主退出后残留后台进程'});
   const stopped = requests.filter(entry => entry.model === 'exit-model').length;
   await wait(1500);
   assert.equal(requests.filter(entry => entry.model === 'exit-model').length, stopped, '宿主退出后仍有自动调用');
