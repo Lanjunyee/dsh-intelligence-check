@@ -46,6 +46,8 @@
 | `dsh-auto-check.mjs`（最终 tarball） | PASS（浏览器 UI） |
 | 真实 Desktop 轻量复核（最终 tarball） | PASS（侧栏/页面/标签/连接/退出清理） |
 
+`dsh-profile-check`、`dsh-lifecycle-check` 与 `dsh-auto-check` 在补修前的同一源码 tarball 上完成；补修只增加 CLI/Web 先启动时的请求重试与 README 兼容段说明，未改变桌面后台、检测或调度路径。补修后的最终包通过 24 项插件/UI 测试、`package-check`、`install-check` 与最终 Desktop 轻量复核。
+
 ## 最终产物
 
 | 产物 | SHA-256 |

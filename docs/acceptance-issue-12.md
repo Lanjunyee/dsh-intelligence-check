@@ -121,6 +121,8 @@ node scripts/dsh-auto-check.mjs
 | `dsh-lifecycle-check.mjs`（最终 tarball） | PASS：完整/缺用量/错误/截断/取消/独立复测/同名目标/重启持久化 |
 | `dsh-auto-check.mjs`（最终 tarball，Playwright Web UI） | PASS：自动检测默认关闭、仅监测目标、关闭/移除停止、预算、重启与退出清理 |
 
+`dsh-profile-check`、`dsh-lifecycle-check` 与 `dsh-auto-check` 的三项结果在补修前的同一源码 tarball 上完成；补修只增加 CLI/Web 先启动时的请求重试和 README 兼容段说明，未改变桌面后台、检测或调度路径。补修后的最终包通过 24 项插件/UI 测试、`package-check`、`install-check`，并在最终 Desktop 轻量复核中完成安装验证。
+
 最终产物真实 Desktop 轻量复核使用隔离 `DSH_HOME=/tmp/dsh-issue12-final-check/home`，通过桌面应用自带的 `dsh plugin --profile desktop add` 安装最终 tarball（安装后 `plugin/client.js` 与 `quality-check` 哈希与上表一致），Playwright 启动真实打包 App：侧栏“模型质量检测”点击后主区域 `.dic-page` 标题为“模型质量检测”，四个标签存在，状态“已连接”；`app.close()` 后 4 秒无匹配该隔离目录的 Host/后台进程。证据：`/tmp/dsh-issue12-final-check/shots/01-initial.png`、`02-native-page.png`、`evidence.json`。未读取用户 `~/.dsh` 配置或旧数据库，未调用付费模型。
 
 剩余限制：最终产物未重跑完整真实 Desktop fixture 检测与自动调度 GUI（完整桌面 GUI 证据来自修复前 `b2d5259` 报告）；其他四平台未在对应系统启动 DSH；生产 15 分钟/180 秒未实际等待；Cloudflare 与旧网页兼容接口未重跑；未推送、未发布、未关闭 Issue。
