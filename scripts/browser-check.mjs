@@ -5,6 +5,8 @@ import {existsSync} from 'node:fs';
 import {mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
+import {verifyHistoryAndReview, verifyHistoryAfterRestart} from './browser-history.mjs';
+import {verifyPreviews} from './browser-preview.mjs';
 
 // Real DSH profile + host-configured controlled OpenAI-compatible services.
 // The browser path goes web console -> Go backend -> plugin -> ctx.llm.stream.
@@ -22,6 +24,7 @@ const work = await mkdtemp('/private/tmp/dsh-ic-stream-work-');
 const env = {...process.env, DSH_HOME: home, DSH_IC_LOCAL_KEY: 'local-controlled-value'};
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const sessionTexts = [];
+const fixture = {};
 
 function mockService(name, streamDelayMs) {
   const requests = [];
@@ -37,7 +40,10 @@ function mockService(name, streamDelayMs) {
     const prompt = String(body.messages?.at(-1)?.content ?? '');
     requests.push({prompt, model: body.model, stream: body.stream});
     const milk = prompt.includes('A previously isolated, newly discovered');
-    const answer = milk ? (name === 'one' ? '46.24 inches' : '48 inches') : `business ok from ${name}`;
+    const artwork = prompt.includes('创建一个 HTML') || prompt.includes('Generate an SVG');
+    const answer = milk ? (name === 'one' ? '46.24 inches' : '48 inches')
+      : artwork ? (fixture.manualSVG || 'no markup')
+      : `business ok from ${name}`;
     response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
     const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
     const pieces = milk && name === 'one' && streamDelayMs ? ['46.', '24 inches'] : [answer];
@@ -210,7 +216,7 @@ try {
   const version = dshRun(['--version']).stdout.trim();
   assert.match(version, /^\d+\.\d+\.\d+/);
   await installProfile('stream-check');
-  const host = await bootProfile('stream-check');
+  let host = await bootProfile('stream-check');
   const launch = {headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge'};
   if (process.env.PLAYWRIGHT_EXECUTABLE) {
     launch.executablePath = process.env.PLAYWRIGHT_EXECUTABLE;
@@ -276,12 +282,38 @@ try {
   await selectTarget(page, 'fixture-two');
   await page.waitForFunction(() => document.querySelector('#testAnswer').textContent === '48 inches', {}, {timeout: 15000});
 
+  // History, comparison, export, download, copy and human review on real host records.
+  const reviewed = await verifyHistoryAndReview({page, context, runPrompt});
+
+  // Isolated HTML/SVG artwork previews generated through the same host route.
+  await page.locator('#tab-tests').click();
+  await selectTarget(page, 'fixture-one');
+  await verifyPreviews({page, context, fixture, root, errors});
+
+  // Records, reviews and artwork previews survive a backend restart.
+  await stopHost(host);
+  host = await bootProfile('stream-check');
+  await openConsole(page, host);
+  await verifyHistoryAfterRestart({page, reviewed: reviewed.reviewed});
+  await page.locator('#tab-history').click();
+  await page.locator('#historyPrompt').selectOption('svg');
+  assert.equal(await page.locator('#results details').count(), 1, '重启后 SVG 作品记录丢失');
+  await page.locator('#historyPrompt').selectOption('html');
+  assert.equal(await page.locator('#results details').count(), 2, '重启后 HTML 作品记录丢失');
+  await page.locator('#tab-tests').click();
+  await selectTarget(page, 'fixture-one');
+  await page.locator('#prompt').selectOption('svg');
+  await page.waitForFunction(() => document.querySelector('#svgImage').naturalWidth === 200, {}, {timeout: 15000});
+  await page.locator('#prompt').selectOption('html');
+  await page.waitForFunction(() => document.querySelector('#htmlFrameHost iframe') &&
+    document.querySelector('#htmlPreviewStatus').textContent === '预览已加载', {}, {timeout: 15000});
+
   await sessionContents(path.join(home, 'sessions'));
   assert.ok(!sessionTexts.join('\n').includes('A previously isolated, newly discovered'), 'quality prompt was written into a business session');
   assert.deepEqual(errors, []);
 
   await stopHost(host);
-  console.log(`PASS: DSH ${version} 隔离 profile 浏览器主链路：七题原文、provider 路由、实时增量、原回答/评估/用量持久化、独立业务会话并行`);
+  console.log(`PASS: DSH ${version} 隔离 profile 浏览器主链路：七题原文、provider 路由、实时增量、历史/组合身份筛选/同题对比/导出/下载/复制、人工评审与自动评估分离及重启读取、HTML/SVG 隔离预览、独立业务会话并行`);
 } finally {
   if (browser) await browser.close();
   for (const host of hosts) await stopHost(host);
