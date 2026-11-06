@@ -50,6 +50,12 @@ function mockService(name, streamDelayMs, options = {}) {
     requests.push({prompt, model: body.model, stream: body.stream, trace, max_tokens: body.max_tokens});
     const milk = prompt.includes('A previously isolated, newly discovered');
     const artwork = prompt.includes('创建一个 HTML') || prompt.includes('Generate an SVG');
+    if (milk && options.failMilk) {
+      await wait(options.failDelayMs || 0);
+      response.writeHead(500, {'content-type': 'application/json'});
+      response.end(JSON.stringify({error: {message: 'controlled milk failure', type: 'server_error'}}));
+      return;
+    }
     const answer = milk ? (name === 'one' ? '46.24 inches' : '48 inches')
       : artwork ? (fixture.manualSVG || 'no markup')
       : `business ok from ${name}`;
@@ -93,6 +99,7 @@ function mockService(name, streamDelayMs, options = {}) {
 const one = await mockService('one', 4500);
 const two = await mockService('two', 0, {traceInvalid: true});
 const slow = await mockService('slow', 0, {traceChunkDelayMs: 500});
+const failing = await mockService('fail', 0, {failMilk: true, failDelayMs: 1500});
 const hosts = [];
 let browser;
 
@@ -132,6 +139,7 @@ async function installProfile(name) {
 ${provider('fixture-one', 'Fixture One', one.origin)}
 ${provider('fixture-two', 'Fixture Two', two.origin)}
 ${provider('fixture-slow', 'Fixture Slow', slow.origin)}
+${provider('fixture-fail', 'Fixture Fail', failing.origin)}
 - id: agent-default-model
   config:
     provider: fixture-one
@@ -275,7 +283,8 @@ try {
   await page.locator('#tab-models').click();
   await addTarget(page, 'fixture-one');
   await addTarget(page, 'fixture-two');
-  assert.equal(await page.locator('#targets tr').count(), 2);
+  await addTarget(page, 'fixture-fail');
+  assert.equal(await page.locator('#targets tr').count(), 3);
 
   // Live increments and independent business traffic during the same window.
   await runPrompt(page, 'fixture-one');
@@ -291,6 +300,19 @@ try {
   await page.waitForFunction(() => document.querySelector('#testAnswer').textContent.includes('46.24 inches') &&
     document.querySelector('#answerMeta').textContent.includes('通过'), {}, {timeout: 30000});
   assert.match(await page.locator('#answerMeta').textContent(), /17 tokens/);
+  assert.equal(await page.locator('#testAnswer').getAttribute('aria-busy'), 'false');
+
+  // A failing host model call still leaves business traffic untouched.
+  await page.locator('#tab-models').click();
+  await runPrompt(page, 'fixture-fail');
+  const replies = business.getByText(/business ok from one/);
+  const beforeFailureReplies = await replies.count();
+  await business.locator('[data-composer-input]').click();
+  await business.keyboard.type('business during detection failure');
+  await business.keyboard.press('Enter');
+  for (let i = 0; i < 150 && (await replies.count()) <= beforeFailureReplies; i++) await wait(200);
+  assert.ok((await replies.count()) > beforeFailureReplies, '检测失败阻断了业务调用');
+  await page.waitForFunction(() => document.querySelector('#answerMeta').textContent.includes('检测不可用'), {}, {timeout: 30000});
   assert.equal(await page.locator('#testAnswer').getAttribute('aria-busy'), 'false');
   await business.close();
 
@@ -349,13 +371,14 @@ try {
   assert.deepEqual(errors, []);
 
   await stopHost(host);
-  console.log(`PASS: DSH ${version} 隔离 profile 浏览器主链路：七题原文、provider 路由、实时增量、历史/组合身份筛选/同题对比/导出/下载/复制、人工评审与自动评估分离及重启读取、HTML/SVG 隔离预览、手动 ModelTrace 完整/无效/取消批次与闭集归因、独立业务会话并行`);
+  console.log(`PASS: DSH ${version} 隔离 profile 浏览器主链路：七题原文、provider 路由、实时增量、历史/组合身份筛选/同题对比/导出/下载/复制、人工评审与自动评估分离及重启读取、HTML/SVG 隔离预览、手动 ModelTrace 完整/无效/取消批次与闭集归因、检测运行与失败时独立业务会话并行`);
 } finally {
   if (browser) await browser.close();
   for (const host of hosts) await stopHost(host);
   await one.close();
   await two.close();
   await slow.close();
+  await failing.close();
   await rm(home, {recursive: true, force: true});
   await rm(work, {recursive: true, force: true});
 }

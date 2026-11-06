@@ -2,21 +2,21 @@
 
 项目仓库：[Lanjunyee/dsh-intelligence-check](https://github.com/Lanjunyee/dsh-intelligence-check)。
 
-项目正在迁移为 DeepSeek Harness 原生模型质量测试与报告插件，目标是复用宿主模型配置与凭据，保留 Go 后端和独立网页控制台，检测结果不阻断业务请求。迁移设计见 [设计文档](docs/dsh-migration.md)，实现规格见 [Issue #1](https://github.com/Lanjunyee/dsh-intelligence-check/issues/1)。
+项目已迁移为 DeepSeek Harness 原生模型质量测试与报告插件，复用宿主模型配置与凭据，保留 Go 后端和独立网页控制台，检测结果不阻断业务请求。迁移设计见 [设计文档](docs/dsh-migration.md)，实现规格见 [Issue #1](https://github.com/Lanjunyee/dsh-intelligence-check/issues/1)。
 
-**当前状态：已完成业务门禁解耦、DSH 原生插件入口（Issue #3）、官方 bundle/五平台分发（Issue #10）、宿主模型目录与检测桥接、取消与用量行为，以及默认关闭的定时 milk 自动检测（Issue #9）。最终整体验收与产物刷新见 Issue #11。**
+**当前状态：迁移已完成。DSH 原生插件入口、官方 bundle/五平台分发、宿主模型目录与 `ctx.llm.stream()` 桥接、取消/异常/用量行为、历史/评审/导出/预览、手动 ModelTrace 和默认关闭的定时 milk 自动检测均已实现，并通过最终 tarball 在真实 DSH `0.2.2-rc.1` 隔离 profile 中完成整体验收（见 [验收记录](docs/acceptance-issue-11.md)）。**
 
 当前实现是 DSH 原生 Cordis 插件，对指定的模型执行主动质量检测并保存报告；检测运行、失败或异常结果均不拦截业务请求，也不改写业务模型路由。
 
 项目由两部分组成：
 
-- **DSH 插件**：`plugin/index.mjs` 按 profile 启动 Go 后台，注册控制台命令与同源入口，并在卸载时回收后台。
-- **Go 后台**：`cmd/quality-check` 提供本机管理 API、SQLite 状态存储、模型检测和临时远程控制台。管理页面嵌入在 Go 二进制中。控制台的模型目录与检测连接仍使用现有网关配置，宿主模型桥接由后续迁移票接入。
+- **DSH 插件**：`plugin/index.mjs` 按 profile 启动 Go 后台，注册控制台命令与同源入口，并在卸载时回收后台；模型目录与检测调用经插件桥接到宿主 `ctx.llm.stream()`，复用宿主 provider 配置与凭据。
+- **Go 后台**：`cmd/quality-check` 提供本机管理 API、SQLite 状态存储、模型检测和临时远程控制台。管理页面嵌入在 Go 二进制中。
 
 ## 工作流程
 
 ```text
-控制台 -> 手动质量检测 -> 模型网关 -> 保存回答、评估与人工评审
+控制台 -> 手动/定时质量检测 -> 插件桥接 -> DSH 宿主模型调用 -> 保存回答、评估与人工评审
 业务客户端 -> DSH -> 上游模型（不经过检测结果判断）
 ```
 
@@ -93,13 +93,13 @@ cd dist && shasum -a 256 -c SHA256SUMS
 
 ## 远程控制台
 
-DSH 原生入口目前只签发本机回环控制台链接；Go 后台仍保留临时 Cloudflare 通道接口，但本票未在 DSH 插件中提供对应入口。以下行为仅适用于直接调用该接口的既有检查：
+DSH 原生入口只签发本机回环控制台链接。Go 后台仍保留临时 Cloudflare 通道接口供既有检查直接调用，但 DSH 插件未提供对应入口；正常使用不需要该通道。以下行为仅适用于直接调用该接口的既有检查：
 
 - 一次性 `/open/...` 链接有效 10 分钟；
 - 浏览器会话最长 30 分钟；
 - 临时通道最长 30 分钟，也可以在页面中提前结束；
 - 关闭通道会撤销远程会话，但不会停止检测后台；
-- 只开放管理页面，不开放 Magpie 模型 API，网关 Key 不返回浏览器。
+- 只开放管理页面，不开放模型调用接口，宿主凭据不返回浏览器。
 
 插件优先使用 PATH 中已有的官方 `cloudflared`。找不到时，默认下载并校验固定版本 `2026.10.0`，缓存到数据目录的 `runtime/`，不需要 root，也不会修改系统 PATH。自动下载需要访问 GitHub 发行文件和 Cloudflare 隧道服务；可通过 `cloudflaredPath` 指定已有客户端，或关闭自动下载。
 
@@ -136,14 +136,14 @@ DSH 原生入口目前只签发本机回环控制台链接；Go 后台仍保留�
 - `milk` 异常时独立复测一次，两次调用分别保存记录；
 - 单次请求 `max_tokens` 为 8192；
 - 单轮总超时为 180 秒；
-- 网关调用失败、超时、空回答、截断、无效响应或预算耗尽会标记为“检测不可用”；
+- 宿主模型调用失败、超时、空回答、截断、无效响应或预算耗尽会标记为“检测不可用”；
 - 传输失败与取消不自动复测。
 
 这些题目只是行为与能力线索，不是模型身份认证、供应商认证或通用智商排名。单题失败不能证明模型被替换；知识题有时效性，复述指纹也可能随版本变化。
 
 ### 题库反馈与更新
 
-质量测试支持流式正文（网关返回普通 JSON 时仍兼容）、等待时间和取消；取消或连接中断保留已返回正文，生成中不会执行预览。HTML 可切换代码块、选择手机/平板/桌面宽度、页内放大，并可选择明确标注的 HTML + CSS/JS 组合结果；原始回答不修改。离开题库会停止预览。历史支持题目、模型、结果、审核状态筛选，双回答对比与筛选结果 JSON 导出。清理需确认，检测期间不可清理；只移除回答与审核，保留已消耗预算计数，不影响模型调用。
+质量测试支持流式正文、等待时间和取消；取消或连接中断保留已返回正文，生成中不会执行预览。HTML 可切换代码块、选择手机/平板/桌面宽度、页内放大，并可选择明确标注的 HTML + CSS/JS 组合结果；原始回答不修改。离开题库会停止预览。历史支持题目、模型、结果、审核状态筛选，双回答对比与筛选结果 JSON 导出。清理需确认，检测期间不可清理；只移除回答与审核，保留已消耗预算计数，不影响模型调用。
 
 HTML 预览额外移除声明式自动刷新、外链导航、表单目标和 base 标签，并使用不含同源、顶层导航或弹窗权限的沙箱。允许任意内联脚本时，浏览器不能可靠禁止 iframe 自身的脚本导航，因而这不是完整的离线执行环境；只预览可信回答，不要在预览中输入敏感信息。网络 API、外部资源和管理页访问限制仍生效。
 
@@ -165,7 +165,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 ### ModelTrace 模型指纹
 
-控制台提供独立的 **ModelTrace 模型指纹** 检测。选择已启用监测的模型，点击“运行三条指纹挑战”，后台通过同一 Magpie 网关发送三次独立数字选择请求。每条要求生成 292–332 个 1–355 范围内的整数。
+控制台提供独立的 **ModelTrace 模型指纹** 检测。选择已启用监测的模型，点击“运行三条指纹挑战”，后台经宿主桥接发送三次独立数字选择请求。每条要求生成 292–332 个 1–355 范围内的整数。
 
 - 每轮预留 3 次当日预算，不足时不发请求；没有自动复测；
 - 每条请求最多 180 秒，三条顺序执行；关闭浏览器不会中断后台采集；
@@ -193,7 +193,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 | 关闭监测 | 关闭该目标的自动检测范围，不影响手动检测 |
 | 删除检测目标 | 从列表移除并保留历史回答和审核；检测中不可删除 |
 
-检测目标的状态和评估结果只写入检测记录，不控制业务请求，也不改变 Magpie 的供应商配置、API 地址或 Key。
+检测目标的状态和评估结果只写入检测记录，不控制业务请求，也不改变宿主的 provider 配置或凭据。
 
 ## 插件选项
 
@@ -217,9 +217,9 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 - 自动检测只在插件后台运行期间执行，不提供宿主退出后的守护进程或停机补跑；关闭、禁用、卸载或退出时停止后续定时调用并取消活动调用；
 - 检测结果不参与业务请求放行、拒绝、暂停或模型切换；
 - 当前控制台的检测目标来自宿主模型目录，模型调用经插件桥接到 `ctx.llm.stream()`，复用宿主 provider 配置与凭据；
-- 五个平台的发行包由当前源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装，其余平台未在本机运行；
-- 最终整体验收由 Issue #11 使用最终集成源码重新生成产物。
-- Cloudflare Quick Tunnel 是临时通道，不保证公网可用性或稳定性；DSH 原生入口未接线。
+- 五个平台的发行包由最终集成源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装与运行，其余平台未在本机运行；
+- 最终产物与整体验收记录见 [Issue #11 验收记录](docs/acceptance-issue-11.md)。
+- Cloudflare Quick Tunnel 是临时通道，不保证公网可用性或稳定性；DSH 原生入口不依赖该通道。
 
 ## 开发与验收
 
@@ -244,6 +244,17 @@ DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tg
 可选的集成检查：
 
 ```sh
+DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-profile-check.mjs
+DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-lifecycle-check.mjs
+DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-auto-check.mjs
+DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/browser-check.mjs
+```
+
+设置 `DSH_PLUGIN_PACKAGE` 时，脚本安装该 tarball 并由包内后台运行，不使用 `binaryPath` 覆盖。
+
+可选的集成检查：
+
+```sh
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-profile-check.mjs
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-auto-check.mjs
 node scripts/plugin-check.mjs
@@ -257,11 +268,12 @@ node scripts/auth-browser-check.mjs
 - `build-release.mjs` 交叉编译五个平台后台，用 `npm pack` 生成每平台只含本平台后台的官方 bundle tarball，并写入 `manifest.json` 与 `SHA256SUMS`；
 - `package-check.mjs` 检查包标识、`dsh.bundle` 格式、图标大小、每平台布局、可执行位、checksum 与无 Go 源码；
 - `install-check.mjs` 解压当前平台发行包并验证插件可启动、签发控制台；
-- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生插件加载、宿主入口、同 profile 共享、跨 profile 隔离、退出清理与卸载；`DSH_BINARY` 可指定 DSH 可执行文件，`DSH_PLUGIN_PACKAGE` 可指定要安装的 tarball 或检出目录；
+- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生插件加载、宿主入口、同 profile 跨会话共享配置/记录/评审、跨 profile 隔离、禁用/退出清理与卸载；`DSH_BINARY` 可指定 DSH 可执行文件，`DSH_PLUGIN_PACKAGE` 可指定要安装的 tarball 或检出目录；
+- `dsh-lifecycle-check.mjs` 使用真实宿主桥接验证完整/缺用量/错误/截断/取消/独立复测/同名目标隔离/取消后重跑与重启持久化；
 - `dsh-auto-check.mjs` 使用隔离 `DSH_HOME` 和本地受控模型服务，以短间隔验证自动检测默认关闭、仅监测目标 milk、无业务对话触发、关闭/移除停止、并发合并、预算与清理、重启配置及退出取消；浏览器可用时通过控制台 UI 开启自动检测并设置间隔；
 - `plugin-check.mjs` 验证已安装包的原生插件启动、管理链接和清理；
 - `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭；
-- `browser-check.mjs` 使用真实隔离 DSH profile、宿主配置的受控 OpenAI 兼容服务和 Playwright，验证七题原文、provider + model 路由、实时增量、回答/评估/用量持久化与业务会话并行；`DSH_INTELLIGENCE_CHECK_TEST_BINARY` 可指定当前源码构建的后台二进制，`PLAYWRIGHT_MODULE` 可指定模块位置。
+- `browser-check.mjs` 使用真实隔离 DSH profile、宿主配置的受控 OpenAI 兼容服务和 Playwright，验证七题原文、provider + model 路由、实时增量、历史/评审/导出/下载/复制、HTML/SVG 隔离预览、手动 ModelTrace、回答/评估/用量持久化与业务会话并行；`DSH_INTELLIGENCE_CHECK_TEST_BINARY` 可指定当前源码构建的后台二进制，`PLAYWRIGHT_MODULE` 可指定模块位置。
 - `auth-browser-check.mjs` 使用真实浏览器验证从外部页面打开管理链接、票据重定向和会话刷新。
 
 运行时检测链路的 Go 测试使用受控模型响应，覆盖手动 milk、评分、独立复测、预算、取消、记录持久化和传输边界；不依赖业务请求被拦截。

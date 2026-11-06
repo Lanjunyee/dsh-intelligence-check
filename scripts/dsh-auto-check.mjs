@@ -91,6 +91,9 @@ async function installProfile(name) {
   const added = dshRun(['plugin', '--profile', name, 'add', packageSpec]);
   assert.equal(added.status, 0, added.stdout + added.stderr);
   const models = ['watched-model', 'unwatched-model', 'slow-model', 'budget-model', 'exit-model'];
+  const pluginConfig = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
+    ? `- id: dsh-intelligence-check\n  config:\n    binaryPath: ${JSON.stringify(binary)}\n`
+    : '';
   await writeFile(path.join(home, 'profiles', name, 'cordis.patch.yml'),
     `- id: llm-pi-ai
   config:
@@ -113,10 +116,7 @@ ${models.map(model => `          - id: ${model}
   config:
     provider: auto-provider
     model: watched-model
-- id: dsh-intelligence-check
-  config:
-    binaryPath: ${JSON.stringify(binary)}
-`);
+${pluginConfig}`);
   return path.join(home, 'profiles', name, 'dsh-intelligence-check');
 }
 

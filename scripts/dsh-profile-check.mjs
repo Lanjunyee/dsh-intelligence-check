@@ -25,22 +25,22 @@ const bundledPlaywright = '/Applications/ChatGPT.app/Contents/Resources/cua_node
 const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundledPlaywright) ? bundledPlaywright : '');
 const {chromium} = playwrightPath ? createRequire(import.meta.url)(playwrightPath) : {};
 
-const mock = http.createServer((request, response) => {
+const mockRequests = [];
+const mock = http.createServer(async (request, response) => {
   if (request.url?.endsWith('/models')) {
     response.setHeader('content-type', 'application/json');
     response.end(JSON.stringify({object: 'list', data: [{id: 'shared-model', object: 'model'}]}));
     return;
   }
   let raw = '';
-  request.on('data', chunk => { raw += chunk; });
-  request.on('end', () => {
-    response.setHeader('content-type', 'application/json');
-    response.end(JSON.stringify({
-      id: 'mock', object: 'chat.completion',
-      choices: [{index: 0, message: {role: 'assistant', content: '46.24 inches'}, finish_reason: 'stop'}],
-      usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2},
-    }));
-  });
+  for await (const chunk of request) raw += chunk;
+  mockRequests.push(JSON.parse(raw).model);
+  response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
+  const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
+  event({choices: [{index: 0, delta: {content: '46.24 inches'}}]});
+  event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
+  event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17}});
+  response.end('data: [DONE]\n\n');
 });
 await new Promise(resolve => mock.listen(0, '127.0.0.1', resolve));
 const mockPort = mock.address().port;
@@ -171,6 +171,29 @@ async function addTarget(console, provider, model) {
   assert.equal(response.status, 200, await response.text());
 }
 
+async function post(console, pathname, body) {
+  const response = await fetch(new URL(pathname, console.location), {
+    method: 'POST',
+    headers: {cookie: console.session, 'content-type': 'application/json'},
+    body: JSON.stringify(body),
+  });
+  assert.equal(response.status, 200, await response.text());
+}
+
+async function stateOf(console) {
+  return (await (await fetch(new URL('/api/state', console.location), {headers: {cookie: console.session}})).json()).state;
+}
+
+async function waitResult(console) {
+  for (let i = 0; i < 300; i++) {
+    const state = await stateOf(console);
+    const record = state.results.find(entry => entry.verdict !== 'running');
+    if (record && state.results.every(entry => entry.verdict !== 'running')) return state;
+    await wait(100);
+  }
+  throw new Error('真实宿主检测未在预期时间完成');
+}
+
 function identity(target) {
   return `${target.provider}|${target.model}`;
 }
@@ -273,9 +296,34 @@ try {
 
   const second = await openEntry(a);
   assert.deepEqual(second.state.targets.map(identity).sort(), ['fixture-one|shared-model', 'fixture-two|shared-model'], '同一 profile 的会话未共享记录');
+  await post(second, '/api/config', {daily_limit: 55, auto_enabled: false, interval_seconds: 900});
+  await post(second, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'milk'});
+  const withRecord = await waitResult(second);
+  assert.equal(withRecord.results.length, 1, '真实宿主检测未生成记录');
+  assert.equal(mockRequests.length, 1, '真实宿主检测未经过受控模型服务');
+  assert.equal(withRecord.results[0].answer, '46.24 inches');
+  assert.equal(withRecord.results[0].usage?.total_tokens, 17);
+  await post(second, `/api/results/${withRecord.results[0].id}/review`, {decision: 'accepted', note: 'profile isolation review'});
+  const shared = await openEntry(a);
+  assert.equal(shared.state.results.length, 1, '同一 profile 的另一个会话未共享检测记录');
+  assert.equal(shared.state.results[0].review, 'accepted', '同一 profile 的另一个会话未共享人工评审');
+  assert.equal(shared.state.config.daily_limit, 55, '同一 profile 的另一个会话未共享配置');
   const isolated = await openEntry(b);
-  assert.deepEqual(isolated.state.targets, [], '跨 profile 数据串用');
+  assert.deepEqual(isolated.state.targets, [], '跨 profile 目标串用');
+  assert.deepEqual(isolated.state.results, [], '跨 profile 检测记录或评审串用');
+  assert.equal(isolated.state.config.daily_limit, 120, '跨 profile 配置串用');
 
+  const patchPath = path.join(home, 'profiles', 'check-a', 'cordis.patch.yml');
+  const originalPatch = await readFile(patchPath, 'utf8');
+  await writeFile(patchPath, originalPatch + '- id: dsh-intelligence-check\n  disabled: true\n');
+  for (let i = 0; i < 100 && processes(dataA).length; i++) await wait(100);
+  assert.equal(processes(dataA).length, 0, '运行中禁用插件后残留后台进程');
+  await writeFile(patchPath, originalPatch);
+  for (let i = 0; i < 150 && processes(dataA).length === 0; i++) await wait(100);
+  assert.equal(processes(dataA).length, 1, 'HMR 重新启用后未恢复后台进程');
+  const hmrReopened = await openEntry(a);
+  assert.deepEqual(hmrReopened.state.targets.map(identity).sort(), ['fixture-one|shared-model', 'fixture-two|shared-model'], 'HMR 重载后目标丢失');
+  assert.equal(hmrReopened.state.results.length, 1, 'HMR 重载后检测记录丢失');
   const owned = processes(dataA);
   assert.equal(owned.length, 1, 'profile A 应只有一个后台进程');
   await stopHost(a);
@@ -284,7 +332,7 @@ try {
   assert.equal(processes(dataA).length + processes(dataB).length, 0, '宿主退出后残留后台进程');
   await assert.rejects(fetch(a.origin() + '/health'));
   await uninstallProfile('check-b');
-  console.log(`PASS: DSH ${version} 隔离 profile 安装 ${path.basename(packageSpec)}、模型目录、provider+model 同名模型选择/保存/重启、宿主入口、同 profile 共享、跨 profile 隔离、退出清理与卸载${uiChecked ? '' : '（未执行浏览器 UI 选择）'}`);
+  console.log(`PASS: DSH ${version} 隔离 profile 安装 ${path.basename(packageSpec)}、模型目录、provider+model 同名模型选择/保存/重启、宿主入口、同 profile 跨会话共享配置/记录/评审、跨 profile 隔离、运行中禁用/HMR 重载/退出清理与卸载${uiChecked ? '' : '（未执行浏览器 UI 选择）'}`);
 } finally {
   if (browser) await browser.close();
   for (const host of hosts) await stopHost(host);

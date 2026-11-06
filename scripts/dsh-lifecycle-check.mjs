@@ -81,11 +81,20 @@ const failed = (request, response) => {
   response.writeHead(500, {'content-type': 'application/json'});
   response.end(JSON.stringify({error: {message: 'controlled provider failure', type: 'server_error'}}));
 };
+let retestCalls = 0;
+const retest = (request, response) => {
+  retestCalls++;
+  sse(response, {
+    pieces: [retestCalls === 1 ? '48 inches' : '46.24 inches'],
+    usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17},
+  });
+};
 const one = await controlledService({
   'complete-model': complete,
   'no-usage-model': noUsage,
   'error-model': failed,
   'truncate-model': truncated,
+  'retest-model': retest,
   'slow-model': complete,
 }, {'slow-model': true});
 const two = await controlledService({'slow-model': complete});
@@ -117,20 +126,20 @@ async function installProfile(name) {
   assert.equal(init.status, 0, init.stdout + init.stderr);
   const added = dshRun(['plugin', '--profile', name, 'add', packageSpec]);
   assert.equal(added.status, 0, added.stdout + added.stderr);
+  const pluginConfig = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
+    ? `- id: dsh-intelligence-check\n  config:\n    binaryPath: ${JSON.stringify(binary)}\n`
+    : '';
   await writeFile(path.join(home, 'profiles', name, 'cordis.patch.yml'),
     `- id: llm-pi-ai
   config:
     providers:
-${provider('provider-one', 'Provider One', one.origin, ['complete-model', 'no-usage-model', 'error-model', 'truncate-model', 'slow-model'])}
+${provider('provider-one', 'Provider One', one.origin, ['complete-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model'])}
 ${provider('provider-two', 'Provider Two', two.origin, ['slow-model'])}
 - id: agent-default-model
   config:
     provider: provider-one
     model: complete-model
-- id: dsh-intelligence-check
-  config:
-    binaryPath: ${JSON.stringify(binary)}
-`);
+${pluginConfig}`);
 }
 
 async function bootProfile(name) {
@@ -214,6 +223,17 @@ async function waitRecord(client, providerId, model, predicate, timeout = 30000)
   throw new Error(`${providerId}/${model} 检测未达到预期状态`);
 }
 
+async function waitRecords(client, providerId, model, count, timeout = 30000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const records = (await stateOf(client)).results
+      .filter(entry => entry.provider === providerId && entry.model === model && entry.prompt === 'milk');
+    if (records.length >= count && records.every(entry => entry.verdict !== 'running')) return records;
+    await wait(100);
+  }
+  throw new Error(`${providerId}/${model} 未产生 ${count} 条结束记录`);
+}
+
 async function addTarget(client, providerId, model) {
   await post(client, '/api/target', {provider: providerId, model, enabled: false});
 }
@@ -233,7 +253,7 @@ try {
   let host = await bootProfile('lifecycle-check');
   let client = await openConsole(host);
 
-  for (const model of ['complete-model', 'no-usage-model', 'error-model', 'truncate-model', 'slow-model']) {
+  for (const model of ['complete-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model']) {
     await addTarget(client, 'provider-one', model);
   }
   await addTarget(client, 'provider-two', 'slow-model');
@@ -263,6 +283,13 @@ try {
   assert.equal(truncatedRecord.verdict, 'truncated');
   assert.equal(truncatedRecord.answer, 'partial answer');
   assert.equal(truncatedRecord.finish, 'max-tokens');
+
+  await start(client, 'provider-one', 'retest-model');
+  const retestRecords = await waitRecords(client, 'provider-one', 'retest-model', 2);
+  assert.deepEqual(retestRecords.map(record => record.verdict), ['failed', 'passed'], 'milk 异常未独立复测或复测记录未分离');
+  assert.equal(retestRecords[0].answer, '48 inches');
+  assert.equal(retestRecords[1].answer, '46.24 inches');
+  assert.equal(one.requests.filter(model => model === 'retest-model').length, 2, '独立复测请求数异常');
 
   await start(client, 'provider-one', 'slow-model');
   await waitRecord(client, 'provider-one', 'slow-model', r => r.answer === 'partial' && r.verdict === 'running');
@@ -302,6 +329,10 @@ try {
   assert.ok(by('provider-one', 'error-model').error_code);
   assert.equal(by('provider-one', 'truncate-model').answer, 'partial answer');
   assert.equal(by('provider-one', 'truncate-model').finish, 'max-tokens');
+  const restoredRetest = restored.results.filter(entry => entry.provider === 'provider-one' &&
+    entry.model === 'retest-model' && entry.prompt === 'milk');
+  assert.deepEqual(restoredRetest.map(record => record.verdict), ['failed', 'passed'], '重启后独立复测记录丢失');
+  assert.deepEqual(restoredRetest.map(record => record.answer), ['48 inches', '46.24 inches']);
   const cancelledRecord = restored.results.find(entry => entry.provider === 'provider-one' &&
     entry.model === 'slow-model' && entry.error === '检测已取消');
   assert.equal(cancelledRecord.answer, 'partial');
@@ -314,7 +345,7 @@ try {
   assert.ok(restored.results.every(record => record.verdict !== 'running'), '重启后仍有进行中记录');
 
   await stopHost(host);
-  console.log(`PASS: DSH ${version} 真实隔离 profile 生命周期矩阵：完整/缺用量/错误/截断/取消/同名目标隔离/取消后重跑/重启保留`);
+  console.log(`PASS: DSH ${version} 真实隔离 profile 生命周期矩阵：完整/缺用量/错误/截断/取消/独立复测/同名目标隔离/取消后重跑/重启保留`);
 } finally {
   for (const host of hosts) await stopHost(host);
   await one.close();
