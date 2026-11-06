@@ -22,6 +22,8 @@ export function createBackend({binaryPath, dataDir, bridge, shared = false, mana
   let control = '';
   let failure = '';
   let owner = true;
+  let closed = false;
+  let recovery;
 
   function start() {
     ready ??= new Promise((resolve, reject) => {
@@ -117,25 +119,40 @@ export function createBackend({binaryPath, dataDir, bridge, shared = false, mana
 
   // A joined instance re-elects when the previous desktop owner went away. The
   // data survives in SQLite, so a new backend serves the same shared state.
+  // Concurrent callers share one attempt; an attempt that runs while the host
+  // is closing never spawns a replacement.
+  function recover() {
+    return (async () => {
+      await terminate();
+      ready = undefined;
+      child = undefined;
+      origin = '';
+      control = '';
+      owner = true;
+      failure = '';
+      if (closed) return false;
+      try {
+        await start();
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+  }
+
   async function ensure() {
+    if (closed) return false;
     if (await healthy()) return true;
     if (!manage) return (await attach()) && healthy();
-    await stop();
-    ready = undefined;
-    child = undefined;
-    origin = '';
-    control = '';
-    owner = true;
-    failure = '';
+    recovery ??= recover();
     try {
-      await start();
-      return true;
-    } catch {
-      return false;
+      return await recovery;
+    } finally {
+      recovery = undefined;
     }
   }
 
-  async function stop() {
+  async function terminate() {
     // A joined instance never owns the process; its helper has already exited.
     if (!owner) return;
     const running = child;
@@ -148,6 +165,11 @@ export function createBackend({binaryPath, dataDir, bridge, shared = false, mana
     }, STOP_GRACE_MS);
     await exited;
     clearTimeout(timer);
+  }
+
+  async function stop() {
+    closed = true;
+    await terminate();
   }
 
   return {start, attach, ensure, healthy, setCatalog, stop, get origin() { return origin; }, get control() { return control; }, get owner() { return owner; }};
