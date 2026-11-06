@@ -51,8 +51,8 @@
 | 产物 | SHA-256 |
 |---|---|
 | `plugin/client.js`（76,892 B） | `73dffc85781365fcd835d89c4e9a7e8016e06d178efd3bdd84a627f6538826c5` |
-| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,912,607 B） | `e89d699ce0662e2f25101b63e7ce509b5399a8c5783d88458f9a050930db3cef` |
+| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,912,661 B） | `12f6485929f654e26824ac1193bcd898621be3a35bc4de78e863a5ff75307cc6` |
 | `dist/quality-check-darwin-arm64` | `9b86c7d705b32e60356e7a7c8f72b487145d95b9c8c4e470cfe4bf6835159cc9` |
-| `dist/SHA256SUMS` | `e3b06cdf9356b1eeabca267f2b6a33e7347440ca9972bbf509a5b875b085365d` |
+| `dist/SHA256SUMS` | `cebf5b043f199d15d64890e3a6cc99e952218792f54466b891b2780c0303a073` |
 
 五平台完整哈希见 `dist/SHA256SUMS`；解包后的 `package/plugin/client.js` 与上表客户端哈希一致。

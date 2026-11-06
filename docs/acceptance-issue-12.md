@@ -97,18 +97,18 @@ node scripts/dsh-auto-check.mjs
 
 修复提交为 `9f859dd0fa65f5edad407173d4f1a94c4dd059b0`；两轴逐项处理与证据见 [审查修复记录](review-issue-12.md)。本轮只改插件、客户端 bundle、集成脚本与文档，Go 源码未变，因此五平台后台哈希与初始实现轮一致；tarball 因新 `plugin/client.js` 而更新。
 
-从该提交源码连续两次执行 `node scripts/build-client.mjs` 与 `node scripts/build-release.mjs`，两次 `dist/SHA256SUMS` 完全一致：
+从最终源码（修复提交 `9f859dd`，README 最终修订含于随后的文档提交 `5c0c3e6`）连续两次执行 `node scripts/build-client.mjs` 与 `node scripts/build-release.mjs`，两次 `dist/SHA256SUMS` 完全一致：
 
 | 产物 | SHA-256 |
 |---|---|
 | `plugin/client.js`（76,892 B） | `73dffc85781365fcd835d89c4e9a7e8016e06d178efd3bdd84a627f6538826c5` |
-| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,912,607 B） | `e89d699ce0662e2f25101b63e7ce509b5399a8c5783d88458f9a050930db3cef` |
+| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,912,661 B） | `12f6485929f654e26824ac1193bcd898621be3a35bc4de78e863a5ff75307cc6` |
 | `dist/quality-check-darwin-arm64`（12,933,858 B） | `9b86c7d705b32e60356e7a7c8f72b487145d95b9c8c4e470cfe4bf6835159cc9` |
 | `dist/quality-check-darwin-amd64` | `7a64b5c8218d779aa6f3bea497250ad46ffd24910ebb1e1c8ad5715ed7874ab6` |
 | `dist/quality-check-linux-amd64` | `9ce41922353d3cc793e60d5262c34498f948aaad9ef2009705d5618ce3ff8e5c` |
 | `dist/quality-check-linux-arm64` | `9c39eea03874279acf4f3899f195a3bb96b38bf4fc9bad339ed5d38e3fde49c7` |
 | `dist/quality-check-windows-amd64.exe` | `8441c60e54fe428d2e54bb7f1a515b4249c284f68856ed12d18c53ddbc677a1e` |
-| `dist/SHA256SUMS` | `e3b06cdf9356b1eeabca267f2b6a33e7347440ca9972bbf509a5b875b085365d` |
+| `dist/SHA256SUMS` | `cebf5b043f199d15d64890e3a6cc99e952218792f54466b891b2780c0303a073` |
 
 `dist/SHA256SUMS` 的十项产物全部通过 `package-check` 校验；解包后的 `package/plugin/client.js` 与上表客户端哈希一致，证明 tarball 不再缺客户端 bundle。`install-check` 通过。主检出中遗留的旧 `dist/` 不得作为交付物；最终集成必须使用本节产物或从最终提交重新构建。
 
