@@ -548,14 +548,16 @@ function HtmlPreview(props) {
 }
 
 function SettingsDialog(props) {
-  const {draft, setDraft, dirty, setDirty, onClose, onSave, busy} = props;
+  const {draft, setDraft, dirty, setDirty, onClose, onSave, busy, message} = props;
   const ref = useRef(null);
   useEffect(() => {
     const handler = event => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
-    ref.current?.querySelector('input')?.focus();
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
+  useEffect(() => {
+    ref.current?.querySelector('input')?.focus();
+  }, []);
   return h('div', {className: 'dic-modal-backdrop', onMouseDown: event => { if (event.target === event.currentTarget) onClose(); }},
     h('div', {className: 'dic-modal', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'dic-settings-title', ref},
       h('div', {className: 'dic-modal-head'},
@@ -580,6 +582,7 @@ function SettingsDialog(props) {
             onChange: event => { setDirty(true); setDraft({...draft, daily_limit: Number(event.target.value)}); },
           })),
         h('p', {className: 'dic-hint'}, '模型目录与凭据由 DSH 桌面应用提供，页面不保存网关地址或模型 API Key。'),
+        message?.text ? h('p', {className: message.ok ? 'dic-hint' : 'dic-error', role: message.ok ? 'status' : 'alert'}, message.text) : null,
         h('div', {className: 'dic-modal-actions'},
           h('span', {className: 'dic-hint'}, dirty ? '有未保存的修改' : '预算约束自动与手动检测的请求次数。'),
           h(Button, {primary: true, type: 'submit', busy, label: '保存设置'}, '保存设置')))));
@@ -597,6 +600,7 @@ function CheckPage() {
   const [pending, setPending] = useState(null);
   const [review, setReview] = useState({decision: 'pending', note: '', dirty: false});
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState({text: '', ok: true});
   const [draft, setDraft] = useState({daily_limit: 120, auto_enabled: false, interval_seconds: 900});
   const [configDirty, setConfigDirty] = useState(false);
   const [traceModel, setTraceModel] = useState('');
@@ -708,19 +712,22 @@ function CheckPage() {
   function openSettings() {
     if (data) setDraft({...data.state.config});
     setConfigDirty(false);
+    setSettingsMessage({text: '', ok: true});
     setSettingsOpen(true);
   }
 
   async function act(key, pathname, body, success) {
-    if (busy) return;
+    if (busy) return {ok: false, busy: true};
     setBusy(key);
     setFeedback({text: '', ok: true});
     try {
       await request(pathname, body);
       if (success) setFeedback({text: success, ok: true});
       await refresh();
+      return {ok: true};
     } catch (failure) {
       setFeedback({text: failure.message, ok: false});
+      return {ok: false, error: failure.message};
     } finally {
       setBusy('');
     }
@@ -1062,12 +1069,24 @@ function CheckPage() {
           : tab === 'fingerprint' ? renderFingerprint() : renderHistory(),
     settingsOpen ? h(SettingsDialog, {
       draft, setDraft, dirty: configDirty, setDirty: setConfigDirty, busy: busy === 'config',
+      message: settingsMessage,
       onClose: () => setSettingsOpen(false),
       onSave: values => act('config', '/config', {
         daily_limit: Number(values.daily_limit),
         auto_enabled: values.auto_enabled,
         interval_seconds: Number(values.interval_seconds),
-      }, '检测设置已保存').then(() => { setConfigDirty(false); setSettingsOpen(false); }),
+      }, '检测设置已保存').then(result => {
+        if (!result?.ok) {
+          setSettingsMessage({
+            ok: false,
+            text: result?.busy ? '正在执行其他操作，设置未保存，请稍后重试。' : (result?.error || '设置保存失败，请重试。'),
+          });
+          return;
+        }
+        setConfigDirty(false);
+        setSettingsMessage({text: '', ok: true});
+        setSettingsOpen(false);
+      }),
     }) : null);
 }
 
