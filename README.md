@@ -4,7 +4,7 @@
 
 项目正在迁移为 DeepSeek Harness 原生模型质量测试与报告插件，目标是复用宿主模型配置与凭据，保留 Go 后端和独立网页控制台，检测结果不阻断业务请求。迁移设计见 [设计文档](docs/dsh-migration.md)，实现规格见 [Issue #1](https://github.com/Lanjunyee/dsh-intelligence-check/issues/1)。
 
-**当前状态：已完成业务门禁解耦、DSH 原生插件入口（Issue #3）与官方 bundle/五平台分发（Issue #10）。插件按 profile 启动 Go 后台、提供宿主控制台入口并随宿主退出清理；宿主模型目录与检测调用桥接、自动检测仍由后续迁移票完成，最终整体验收见 Issue #11。**
+**当前状态：已完成业务门禁解耦、DSH 原生插件入口（Issue #3）、官方 bundle/五平台分发（Issue #10）、宿主模型目录与检测桥接、取消与用量行为，以及默认关闭的定时 milk 自动检测（Issue #9）。最终整体验收与产物刷新见 Issue #11。**
 
 当前实现是 DSH 原生 Cordis 插件，对指定的模型执行主动质量检测并保存报告；检测运行、失败或异常结果均不拦截业务请求，也不改写业务模型路由。
 
@@ -85,19 +85,11 @@ cd dist && shasum -a 256 -c SHA256SUMS
 ## 首次配置
 
 1. 在 DSH 会话中执行 `/dsh-intelligence-check`，或打开宿主同源入口 `/dsh-intelligence-check`，取得一次性控制台链接。
-2. 点击右上角设置图标，在“连接与预算”中确认网关 URL、Key 和每日请求上限，保存后会验证连接。
-3. 点击“刷新模型”，选择完整模型 ID，例如 `provider/model`，添加检测目标。
-4. 在质量题库中选择模型和题目，手动运行检测并查看回答与评估结果。
+2. 在“模型监测”页从宿主模型目录选择提供方和模型，添加检测目标；每个目标可单独打开“监测”开关。
+3. 点击右上角设置图标配置每日每模型请求上限，以及是否开启定时自动检测和间隔；自动检测默认关闭，默认间隔 900 秒（15 分钟）。
+4. 在质量题库中选择模型和题目手动运行检测，或在“模型监测”页对目标执行“重新检测”。
 
-检测目标默认只用于手动运行；加入监测范围的开关不影响业务请求。
-
-控制台的模型目录与检测调用尚未迁移到宿主模型目录和 `ctx.llm.stream()`，当前仍使用连接设置中的网关地址与 Key；该迁移由后续票完成。
-
-如果仍提示“请配置 Magpie 网关 URL 和 Key”，点击连接设置，填写 **Magpie 所在机器**可访问的网关地址，例如 `http://127.0.0.1:3425`，以及网关 Key（本机默认 `magpie`），再保存。它不是 Cloudflare 控制台域名，也不是上游供应商地址。Docker 中网关不在同一容器时，请填写容器可访问的实际地址与 Key。
-
-控制台提供模型监测、质量题库、模型指纹和检测记录四个视图；支持暗亮主题、手机操作、记录筛选、历史指纹批次和原始回答下载。自动刷新会保留未保存的设置与已展开的回答。
-
-只需要填写 Magpie 网关的 URL 和 Key，不需要重复填写各上游供应商凭据。
+自动检测开启后，后台只对已打开“监测”的目标按间隔执行 milk，不依赖业务对话，其余质量题与 ModelTrace 仍需手动运行。关闭自动检测或移除监测目标后不再产生后续定时调用；配置按 profile 保存，重启后继续生效。检测不拦截业务请求。
 
 ## 远程控制台
 
@@ -191,7 +183,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 ## 目标与人工操作
 
-检测目标列表展示模型和当日已用请求数；“监测”开关记录自动检测范围，当前版本的所有题目仍需手动触发。
+检测目标列表展示模型和当日已用请求数；“监测”开关决定是否加入定时自动检测范围。自动检测固定执行 milk；其余题目与 ModelTrace 仍需手动触发。
 
 可执行操作：
 
@@ -221,7 +213,8 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 ## 限制与兼容性
 
-- 原生插件入口、profile 后台、退出清理与官方 bundle/五平台分发已实现；宿主模型目录、`ctx.llm.stream()` 检测桥接与自动检测由后续迁移票完成；
+- 原生插件入口、profile 后台、退出清理、官方 bundle/五平台分发、宿主模型目录与桥接、以及默认关闭的定时 milk 自动检测已实现；
+- 自动检测只在插件后台运行期间执行，不提供宿主退出后的守护进程或停机补跑；关闭、禁用、卸载或退出时停止后续定时调用并取消活动调用；
 - 检测结果不参与业务请求放行、拒绝、暂停或模型切换；
 - 当前控制台的检测目标来自宿主模型目录，模型调用经插件桥接到 `ctx.llm.stream()`，复用宿主 provider 配置与凭据；
 - 五个平台的发行包由当前源码交叉编译并通过布局与 checksum 检查；只有 macOS arm64 在本机执行了真实 DSH 安装，其余平台未在本机运行；
@@ -236,6 +229,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 go test -race ./...
 go vet ./...
 node --test plugin/*.test.mjs
+node --test scripts/ui.test.mjs
 ```
 
 构建发行包和校验清单：
@@ -251,6 +245,7 @@ DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tg
 
 ```sh
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-profile-check.mjs
+DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-auto-check.mjs
 node scripts/plugin-check.mjs
 node scripts/cloudflare-check.mjs
 node scripts/browser-check.mjs
@@ -263,6 +258,7 @@ node scripts/auth-browser-check.mjs
 - `package-check.mjs` 检查包标识、`dsh.bundle` 格式、图标大小、每平台布局、可执行位、checksum 与无 Go 源码；
 - `install-check.mjs` 解压当前平台发行包并验证插件可启动、签发控制台；
 - `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生插件加载、宿主入口、同 profile 共享、跨 profile 隔离、退出清理与卸载；`DSH_BINARY` 可指定 DSH 可执行文件，`DSH_PLUGIN_PACKAGE` 可指定要安装的 tarball 或检出目录；
+- `dsh-auto-check.mjs` 使用隔离 `DSH_HOME` 和本地受控模型服务，以短间隔验证自动检测默认关闭、仅监测目标 milk、无业务对话触发、关闭/移除停止、并发合并、预算与清理、重启配置及退出取消；浏览器可用时通过控制台 UI 开启自动检测并设置间隔；
 - `plugin-check.mjs` 验证已安装包的原生插件启动、管理链接和清理；
 - `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭；
 - `browser-check.mjs` 使用真实隔离 DSH profile、宿主配置的受控 OpenAI 兼容服务和 Playwright，验证七题原文、provider + model 路由、实时增量、回答/评估/用量持久化与业务会话并行；`DSH_INTELLIGENCE_CHECK_TEST_BINARY` 可指定当前源码构建的后台二进制，`PLAYWRIGHT_MODULE` 可指定模块位置。

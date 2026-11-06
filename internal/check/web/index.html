@@ -26,6 +26,7 @@
   <div id="message" class="feedback" role="alert"></div>
   <section class="overview" aria-label="检测概览">
     <div class="stat"><span>监测目标</span><strong id="statEnabled">0</strong></div>
+    <div class="stat"><span>自动检测</span><strong id="statAuto">关闭</strong></div>
     <div class="stat"><span>今日请求</span><strong id="statRequests">0</strong></div>
     <div class="stat"><span>今日已报告 tokens</span><strong id="statTokens">不可用</strong></div>
   </section>
@@ -102,9 +103,12 @@
   <footer class="footer"><span>dsh-intelligence-check</span><span id="lastSync">等待连接</span></footer>
 </main>
 <dialog id="settingsDialog" aria-labelledby="settingsTitle">
-  <div class="dialog-heading"><h2 id="settingsTitle">检测预算</h2><button id="closeSettings" class="icon-button" data-icon="X" aria-label="关闭设置" data-tooltip="关闭设置"></button></div>
+  <div class="dialog-heading"><h2 id="settingsTitle">检测设置</h2><button id="closeSettings" class="icon-button" data-icon="X" aria-label="关闭设置" data-tooltip="关闭设置"></button></div>
   <form id="config">
     <div class="fields">
+      <label class="auto-field"><input name="auto_enabled" type="checkbox"><span>开启定时自动检测</span></label>
+      <label>自动检测间隔（秒）<input name="interval_seconds" type="number" min="1" max="86400" value="900" required></label>
+      <p class="field-note">开启后仅对已打开“监测”的检测目标执行 milk，默认每 900 秒（15 分钟）一次；不依赖业务对话，关闭或移除目标后停止后续调用。</p>
       <label>每日每模型请求上限<input name="daily_limit" type="number" min="1" max="10000" value="120" required></label>
       <p class="field-note">模型目录与凭据由 DSH 宿主提供，控制台不保存网关地址或模型 API Key。</p>
     </div>

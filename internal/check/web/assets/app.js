@@ -233,7 +233,15 @@ async function refresh() {
     $('#health').textContent = data.health ? '服务异常' : '宿主目录已连接';
     $('#health').className = 'service-state ' + (data.health ? 'warning' : 'connected');
     $('#health').title = data.health || '';
-    if (!configDirty) config.elements.daily_limit.value = data.state.config.daily_limit;
+    if (!configDirty) {
+      config.elements.daily_limit.value = data.state.config.daily_limit;
+      config.elements.auto_enabled.checked = data.state.config.auto_enabled;
+      config.elements.interval_seconds.value = data.state.config.interval_seconds;
+    }
+    const interval = data.state.config.interval_seconds;
+    $('#statAuto').textContent = data.state.config.auto_enabled
+      ? (interval % 60 === 0 ? `每 ${interval / 60} 分钟` : `每 ${interval} 秒`)
+      : '关闭';
     const targets = data.state.targets;
     $('#targetCount').textContent = targets.length;
     $('#statEnabled').textContent = targets.filter(t => t.enabled).length;
@@ -330,9 +338,13 @@ config.onsubmit = event => {
   event.preventDefault();
   pending(config.querySelector('button.primary'), async () => {
     const values = Object.fromEntries(new FormData(config));
-    await request('/api/config', { daily_limit: Number(values.daily_limit) });
+    await request('/api/config', {
+      daily_limit: Number(values.daily_limit),
+      auto_enabled: config.elements.auto_enabled.checked,
+      interval_seconds: Number(values.interval_seconds),
+    });
     configDirty = false; await refresh();
-    $('#configMessage').textContent = '预算已保存';
+    $('#configMessage').textContent = '检测设置已保存';
     $('#configMessage').className = 'inline-state success';
   }, $('#configMessage'));
 };

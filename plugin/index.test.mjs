@@ -151,6 +151,8 @@ test('profile load pushes the host catalog and the command issues an authorized 
     assert.deepEqual(response.state.targets, []);
     assert.deepEqual(response.state.results, []);
     assert.equal(response.state.config.daily_limit, 120);
+    assert.equal(response.state.config.auto_enabled, false);
+    assert.equal(response.state.config.interval_seconds, 900);
     assert.deepEqual(response.catalog.map(entry => `${entry.provider}|${entry.model}`).sort(),
       ['provider-one|shared-model', 'provider-two|shared-model']);
   } finally {
@@ -169,6 +171,55 @@ test('same model at two providers is saved independently and adding does not mon
       'provider-one|shared-model|false',
       'provider-two|shared-model|false',
     ]);
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
+test('automatic checks stay off by default and then run milk only for monitored targets', async () => {
+  const calls = [];
+  const p = profile(undefined, {
+    stream: async function* (options) {
+      calls.push(options);
+      yield {type: 'text-delta', index: 0, text: '46.24 inches'};
+      yield {type: 'finish', reason: {kind: 'stop'}};
+    },
+  });
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    let state = await stateOf(console);
+    assert.equal(state.config.auto_enabled, false, 'automatic checks were enabled by default');
+    assert.equal(state.config.interval_seconds, 900);
+    await addTarget(console, 'provider-one', 'watched', true);
+    await addTarget(console, 'provider-one', 'unwatched', false);
+    await delay(1200);
+    assert.equal(calls.length, 0, 'a non-running automatic check produced a model call');
+
+    const saved = await console('/api/config', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({daily_limit: 120, auto_enabled: true, interval_seconds: 1}),
+    });
+    assert.equal(saved.status, 200, await saved.text());
+    for (let i = 0; i < 200 && calls.length === 0; i++) await delay(25);
+    assert.ok(calls.length > 0, 'automatic check did not run without a business conversation');
+    for (const options of calls) assert.equal(options.model, 'watched', 'unmonitored target was called');
+    assert.equal(calls[0].messages[0].content[0].text,
+      (await (await console('/api/state')).json()).prompts.find(prompt => prompt.id === 'milk').text);
+
+    const disabled = await console('/api/config', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({daily_limit: 120, auto_enabled: false, interval_seconds: 1}),
+    });
+    assert.equal(disabled.status, 200, await disabled.text());
+    await delay(200);
+    const stopped = calls.length;
+    await delay(1300);
+    assert.equal(calls.length, stopped, 'automatic checks continued after being disabled');
+    state = await stateOf(console);
+    assert.equal(state.config.auto_enabled, false);
   } finally {
     await p.ctx.dispose();
   }
