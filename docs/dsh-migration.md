@@ -2,7 +2,7 @@
 
 本文件记录设计讨论中已经确认的范围。迁移已实现并通过真实 DSH 隔离 profile 整体验收（见 [Issue #11 验收记录](acceptance-issue-11.md)）；本文件保留原始设计边界。
 
-> **已被 ADR 0002 取代的部分**：Issue #12 起，页面改为 DSH 原生侧边栏入口与主区域页面（不再以独立网页控制台为主入口）；数据改为用户级 `$DSH_HOME/dsh-intelligence-check` 跨 profile 共享，同一用户同机只运行一套后台；后台只由桌面宿主启动，单独 CLI/Web 宿主不启动。下文涉及“不同 profile 隔离”、控制台入口和按 profile 子进程的描述仅作历史记录，以 [ADR 0002](adr/0002-native-desktop-panel-shared-backend.md) 和 [Issue #12 验收记录](acceptance-issue-12.md) 为准。
+> **已被 ADR 0002 取代的部分**：Issue #12 起，页面改为 DSH 原生侧边栏入口与主区域页面（不再以独立网页控制台为主入口）；数据改为用户级 `$DSH_HOME/dsh-intelligence-check` 跨 profile 共享，同一用户同机只运行一套后台；后台只由桌面宿主启动，单独 CLI/Web 宿主不启动。下文涉及“不同 profile 隔离”、控制台入口和按 profile 子进程的描述仅作历史记录，以 [ADR 0002](adr/0002-desktop-panel-and-shared-check-state.md) 和 [Issue #12 验收记录](acceptance-issue-12.md) 为准。
 
 ## 产品范围
 
@@ -53,4 +53,4 @@
 - [宿主命令注册](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/commands.md)
 - [宿主 Web 路由](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/web-server.md)
 
-相关决定见 [ADR 0001](adr/0001-native-dsh-plugin-with-go-backend.md) 与 [ADR 0002](adr/0002-native-desktop-panel-shared-backend.md)，领域术语见 [GLOSSARY](../GLOSSARY.md)。
+相关决定见 [ADR 0001](adr/0001-native-dsh-plugin-with-go-backend.md) 与 [ADR 0002](adr/0002-desktop-panel-and-shared-check-state.md)，领域术语见 [GLOSSARY](../GLOSSARY.md)。

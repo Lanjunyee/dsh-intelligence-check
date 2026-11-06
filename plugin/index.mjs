@@ -10,7 +10,10 @@ export const inject = ['llm'];
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const ROUTE = '/dsh-intelligence-check';
-const SAFE_HEADERS = new Set(['content-type', 'cache-control', 'content-disposition', 'x-preview-candidates', 'x-preview-combined']);
+const SAFE_HEADERS = new Set([
+  'content-type', 'cache-control', 'content-disposition', 'x-preview-candidates', 'x-preview-combined',
+  'content-security-policy', 'permissions-policy',
+]);
 
 async function readCatalog(llm) {
   const providers = llm.listProviders();
@@ -80,6 +83,16 @@ export async function apply(ctx, config = {}) {
       await bridge.close();
       throw error;
     }
+  } else {
+    // A CLI/Web host joins a running desktop backend read-only and never
+    // starts or takes over the process.
+    backend = createBackend({
+      binaryPath: resolveBinary(root, config),
+      dataDir: sharedDataDir(process.env, config),
+      shared: true,
+      manage: false,
+    });
+    await backend.attach();
   }
   const syncCatalog = () => {
     // A joined instance never overwrites the owner's desktop model catalog.
@@ -89,14 +102,18 @@ export async function apply(ctx, config = {}) {
       error => console.error(`[dsh-intelligence-check] 模型目录读取失败：${error.message}`),
     );
   };
-  if (backend?.owner) {
+  if (desktop) {
+    // Subscribe even when this instance starts as a joiner, so the catalog
+    // keeps updating after it takes over ownership.
     ctx.on('llm/adapters-updated', syncCatalog);
     ctx.on('llm/models-updated', syncCatalog);
     await syncCatalog();
+    console.error(`[dsh-intelligence-check] backend ready, shared=${backend.origin}, owner=${backend.owner}`);
+  } else {
+    console.error(backend.origin
+      ? `[dsh-intelligence-check] CLI host detected; joined shared desktop backend ${backend.origin}`
+      : '[dsh-intelligence-check] CLI host detected; the shared desktop backend is not running');
   }
-  console.error(backend
-    ? `[dsh-intelligence-check] backend ready, shared=${backend.origin}, owner=${backend.owner}`
-    : '[dsh-intelligence-check] CLI host detected; the shared desktop backend is not started');
 
   // Native page API: the page calls same-origin, and this host half forwards to
   // the single shared backend with the owner control token.

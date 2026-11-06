@@ -28,8 +28,9 @@ function profile(options = {}) {
   const routes = [];
   const injections = [];
   const commands = [];
+  const listeners = new Map();
   let catalogReads = 0;
-  const catalog = options.catalog || catalogFor('provider-one');
+  let catalog = options.catalog || catalogFor('provider-one');
   const ctx = {
     profileContext: {name: path.basename(dir), dir},
     effect(fn) {
@@ -37,7 +38,10 @@ function profile(options = {}) {
       disposers.push(dispose);
       return dispose;
     },
-    on() { return () => {}; },
+    on(event, handler) {
+      listeners.set(event, [...(listeners.get(event) || []), handler]);
+      return () => {};
+    },
     inject(services, fn) { injections.push({services, fn}); },
     commands: {register(definition) { commands.push(definition); return () => {}; }},
     llm: {
@@ -63,7 +67,14 @@ function profile(options = {}) {
       rmSync(dir, {recursive: true, force: true});
     },
   };
-  return {dir, ctx, routes, commands, get catalogReads() { return catalogReads; }};
+  return {
+    dir, ctx, routes, commands,
+    get catalogReads() { return catalogReads; },
+    setCatalog(next) { catalog = next; },
+    async emit(event) {
+      for (const handler of listeners.get(event) || []) await handler();
+    },
+  };
 }
 
 async function serve(route) {
@@ -183,6 +194,13 @@ test('profiles share one backend, one catalog authority, and keep working when t
       'takeover did not publish the remaining desktop catalog');
     assert.equal(processes(dataDir).length, 1, 'takeover did not leave exactly one backend');
 
+    // The host that took over keeps publishing later model-catalog updates.
+    second.setCatalog(catalogFor('provider-three'));
+    await second.emit('llm/models-updated');
+    const updated = await (await fetch(secondServer.origin + '/dsh-intelligence-check/api/state')).json();
+    assert.deepEqual(updated.catalog.map(entry => entry.provider), ['provider-three'],
+      'catalog updates stopped after takeover');
+
     await second.ctx.dispose();
     assert.ok(await waitUntil(() => processes(dataDir).length === 0, 8000), 'backend survived the last host');
   } finally {
@@ -190,6 +208,77 @@ test('profiles share one backend, one catalog authority, and keep working when t
     await secondServer?.close();
     await first.ctx.dispose().catch(() => {});
     await second.ctx.dispose().catch(() => {});
+    rmSync(dataDir, {recursive: true, force: true});
+  }
+});
+
+test('a CLI host joins the running desktop backend without starting or overriding it', async () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-cli-join-'));
+  const desktop = profile({catalog: catalogFor('provider-one')});
+  const cli = profile({catalog: catalogFor('provider-two')});
+  let desktopServer, cliServer;
+  try {
+    await apply(desktop.ctx, {binaryPath, dataDir, desktop: true});
+    desktopServer = await serve(desktop.ctx.injectRoutes()[0]);
+    await apply(cli.ctx, {binaryPath, dataDir});
+    cliServer = await serve(cli.ctx.injectRoutes()[0]);
+
+    const shared = await fetch(cliServer.origin + '/dsh-intelligence-check/api/state');
+    assert.equal(shared.status, 200, await shared.clone().text());
+    const body = await shared.json();
+    assert.deepEqual(body.catalog.map(entry => entry.provider), ['provider-one'],
+      'the CLI host overrode the desktop model catalog');
+    assert.equal(cli.catalogReads, 0, 'the CLI host published its own model catalog');
+    assert.equal(processes(dataDir).length, 1, 'the CLI host started an extra backend');
+
+    await desktop.ctx.dispose();
+    assert.ok(await waitUntil(() => processes(dataDir).length === 0, 8000), 'owner backend did not stop');
+    const unavailable = await fetch(cliServer.origin + '/dsh-intelligence-check/api/state');
+    assert.equal(unavailable.status, 503, 'the CLI host kept serving after the desktop backend exited');
+    assert.equal(processes(dataDir).length, 0, 'the CLI host started or took over the backend');
+  } finally {
+    await desktopServer?.close();
+    await cliServer?.close();
+    await desktop.ctx.dispose().catch(() => {});
+    await cli.ctx.dispose().catch(() => {});
+    rmSync(dataDir, {recursive: true, force: true});
+  }
+});
+
+test('the page API forwards preview isolation response headers', async () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-headers-'));
+  const upstream = createServer((request, response) => {
+    response.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8',
+      'content-security-policy': "default-src 'none'; sandbox allow-scripts",
+      'permissions-policy': 'camera=(), microphone=()',
+      'x-preview-candidates': '1',
+    });
+    response.end('<p>preview</p>');
+  });
+  await new Promise((resolve, reject) => {
+    upstream.once('error', reject);
+    upstream.listen(0, '127.0.0.1', resolve);
+  });
+  const fixture = path.join(dataDir, 'backend.mjs');
+  await writeFile(fixture, `#!/usr/bin/env node
+process.stdout.write(JSON.stringify({origin: 'http://127.0.0.1:${upstream.address().port}', control: 'fixture'}) + '\\n');
+setInterval(() => {}, 1000);
+`, {mode: 0o700});
+  const p = profile();
+  let server;
+  try {
+    await apply(p.ctx, {binaryPath: fixture, dataDir, desktop: true});
+    server = await serve(p.ctx.injectRoutes()[0]);
+    const response = await fetch(server.origin + '/dsh-intelligence-check/api/results/html/preview');
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-security-policy'), "default-src 'none'; sandbox allow-scripts");
+    assert.equal(response.headers.get('permissions-policy'), 'camera=(), microphone=()');
+    assert.equal(response.headers.get('x-preview-candidates'), '1');
+  } finally {
+    await server?.close();
+    await p.ctx.dispose().catch(() => {});
+    await new Promise(resolve => upstream.close(resolve));
     rmSync(dataDir, {recursive: true, force: true});
   }
 });

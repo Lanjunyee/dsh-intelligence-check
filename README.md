@@ -33,10 +33,15 @@ DSH 侧边栏 -> 主区域原生检测页面 -> 手动/定时质量检测 -> 插
 `dist/dsh-intelligence-check-<platform>-<arch>.tgz` 已内置对应平台的 Go 后台，安装时不需要 Go、pnpm 或现场编译：
 
 ```sh
-dsh plugin --profile <name> add /absolute/path/to/dsh-intelligence-check-darwin-arm64.tgz
+# 先启动一次 DSH 桌面应用并完全退出，初始化其固定 profile
+dsh plugin --profile desktop add /absolute/path/to/dsh-intelligence-check-darwin-arm64.tgz
 ```
 
+DSH 桌面应用固定使用 `$DSH_HOME/profiles/desktop`（默认 `~/.dsh/profiles/desktop`），因此必须安装到 `desktop` profile；安装到其他 profile 不会出现在桌面应用侧边栏。请使用桌面应用“管理 dsh 命令”安装的 `dsh` 命令执行上述安装；独立 npm CLI 可能拒绝管理保留的 `desktop` profile。
+
 安装后启动 **DSH 桌面应用**，在全局侧边栏选择“模型质量检测”，完整页面会在主区域打开。不需要斜杠命令、复制链接或外部浏览器。
+
+如希望同时从 CLI/Web 宿主查看同一状态，可把插件安装到该宿主使用的 profile（例如 `web`）。该实例只连接桌面应用已运行的共享后台，不启动也不接管后台；桌面应用未运行时页面显示后台不可用。
 
 | 平台 | 安装包 |
 | --- | --- |
@@ -48,19 +53,19 @@ dsh plugin --profile <name> add /absolute/path/to/dsh-intelligence-check-darwin-
 
 每个包只含本平台 `bin/quality-check`（Windows 为 `.exe`）。插件按宿主平台优先选择包内 `bin/quality-check-<platform>-<arch>`，发行包内回退到 `bin/quality-check`；也可用 `binaryPath` 覆盖。
 
-共享数据位于 `$DSH_HOME/dsh-intelligence-check/`（未设置 `DSH_HOME` 时为 `~/.dsh/dsh-intelligence-check/`），由同一用户的全部工作目录与 profile 共同使用。新版从空数据开始，不读取、迁移或合并旧 profile 数据；旧数据不会被删除，也无需为迁移备份。单独启动 `dsh` CLI（包括 `dsh web`）只加载页面，不启动检测后台，页面会显示后台不可用。
+共享数据位于 `$DSH_HOME/dsh-intelligence-check/`（未设置 `DSH_HOME` 时为 `~/.dsh/dsh-intelligence-check/`），由同一用户的全部工作目录与 profile 共同使用。新版从空数据开始，不读取、迁移或合并旧 profile 数据；旧数据不会被删除，也无需为迁移备份。单独启动 `dsh` CLI（包括 `dsh web`）只加载页面，不启动或接管检测后台；桌面应用的共享后台正在运行时，该页面连接并显示同一状态，否则显示后台不可用。
 
-卸载：`dsh plugin --profile <name> remove dsh-intelligence-check`。卸载不会删除用户级共享数据目录。
+卸载：`dsh plugin --profile desktop remove dsh-intelligence-check`。卸载不会删除用户级共享数据目录。
 
 ### 开发检出
 
 ```sh
-dsh --profile <name> --from-default-profile web
-dsh plugin --profile <name> add /absolute/path/to/dsh-intelligence-check
+# 先启动一次 DSH 桌面应用并完全退出，初始化固定 profile
+dsh plugin --profile desktop add /absolute/path/to/dsh-intelligence-check
 node scripts/build-client.mjs
 ```
 
-然后在 DSH 桌面应用中使用该 profile，从侧边栏打开原生页面。仅运行 `dsh --profile <name>`（CLI/Web 宿主）不会启动共享后台；这是桌面应用独占的生命周期边界。原生页面 bundle 由 `plugin/client-core.mjs`、`plugin/client-panel.js` 与 ModelTrace 评分核心生成，修改源码后需重新执行 `node scripts/build-client.mjs`。
+然后重新启动 DSH 桌面应用，从侧边栏打开原生页面。桌面应用固定使用 `profiles/desktop`，安装到其他 profile 不会进入桌面侧边栏。仅运行 `dsh --profile <name>`（CLI/Web 宿主）不会启动或接管共享后台；桌面后台正在运行时它只连接并读取同一状态。原生页面 bundle 由 `plugin/client-core.mjs`、`plugin/client-panel.js` 与 ModelTrace 评分核心生成，修改源码后需重新执行 `node scripts/build-client.mjs`。
 
 ### 从源码构建
 
@@ -131,7 +136,7 @@ cd dist && shasum -a 256 -c SHA256SUMS
 
 自动评估只使用 `milk`：最终答案为 `46.24`，或最后一个带 `inches`/`inch`/`英寸` 单位的数字为 `46.24` 时通过。首次答案异常会独立复测一次；两次都未通过时记录为“未通过”。
 
-其他题目会保存原始回答和 token 用量，在质量题库页面直接展示，也可选择历史回答、复制或下载。失败与截断会显示原因，并保留已返回的回答正文。用户可保存“待确认 / 确认通过 / 标记问题”与审核备注；结论记录在对应回答上，不更改自动评分或模型调用。自动辅助检查展示字符数、逐字复述覆盖率或代码标记等可验证线索，不识别模型身份，也不替代人工审核。后台不会执行模型生成的 HTML、SVG 或 Python。
+其他题目会保存原始回答和 token 用量，在质量题库页面直接展示，也可选择历史回答、复制或下载。失败与截断会显示原因，并保留已返回的回答正文。用户可保存“待确认 / 确认通过 / 标记问题”与评审备注；结论记录在对应回答上，不更改自动评分或模型调用。自动辅助检查展示字符数、逐字复述覆盖率或代码标记等可验证线索，不识别模型身份，也不替代人工评审。后台不会执行模型生成的 HTML、SVG 或 Python。
 
 ### 预算与超时
 
@@ -146,7 +151,7 @@ cd dist && shasum -a 256 -c SHA256SUMS
 
 ### 题库反馈与更新
 
-质量测试支持流式正文、等待时间和取消；取消或连接中断保留已返回正文，生成中不会执行预览。HTML 可切换代码块、选择手机/平板/桌面宽度、页内放大，并可选择明确标注的 HTML + CSS/JS 组合结果；原始回答不修改。离开题库会停止预览。历史支持题目、模型、结果、审核状态筛选，双回答对比与筛选结果 JSON 导出。清理需确认，检测期间不可清理；只移除回答与审核，保留已消耗预算计数，不影响模型调用。
+质量测试支持流式正文、等待时间和取消；取消或连接中断保留已返回正文，生成中不会执行预览。HTML 可切换代码块、选择手机/平板/桌面宽度、页内放大，并可选择明确标注的 HTML + CSS/JS 组合结果；原始回答不修改。离开题库会停止预览。历史支持题目、模型、结果、评审状态筛选，双回答对比与筛选结果 JSON 导出。清理需确认，检测期间不可清理；只移除回答与评审，保留已消耗预算计数，不影响模型调用。
 
 HTML 预览额外移除声明式自动刷新、外链导航、表单目标和 base 标签，并使用不含同源、顶层导航或弹窗权限的沙箱。允许任意内联脚本时，浏览器不能可靠禁止 iframe 自身的脚本导航，因而这不是完整的离线执行环境；只预览可信回答，不要在预览中输入敏感信息。网络 API、外部资源和管理页访问限制仍生效。
 
@@ -194,7 +199,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 | --- | --- |
 | 重新检测 | 立即运行默认题目，计入预算 |
 | 关闭监测 | 关闭该目标的自动检测范围，不影响手动检测 |
-| 删除检测目标 | 从列表移除并保留历史回答和审核；检测中不可删除 |
+| 删除检测目标 | 从列表移除并保留历史回答和评审；检测中不可删除 |
 
 检测目标的状态和评估结果只写入检测记录，不控制业务请求，也不改变宿主的 provider 配置或凭据。
 
@@ -217,7 +222,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 ## 限制与兼容性
 
 - 原生侧边栏入口、主区域页面、用户级共享存储、单后台、桌面退出清理、官方 bundle/五平台分发、宿主模型目录与桥接、以及默认关闭的定时 milk 自动检测已实现；
-- 检测后台只由 DSH 桌面宿主启动。单独启动 CLI 或 `dsh web` 不启动后台；没有桌面宿主时页面显示后台不可用；
+- 检测后台只由 DSH 桌面宿主启动。单独启动 CLI 或 `dsh web` 不启动或接管后台，只连接已运行的桌面后台；没有桌面后台时页面显示后台不可用；
 - 自动检测只在桌面宿主后台运行期间执行，不提供宿主退出后的守护进程或停机补跑；关闭、禁用、卸载或退出时停止后续定时调用并取消活动调用；
 - 检测结果不参与业务请求放行、拒绝、暂停或模型切换；
 - 检测目标来自桌面应用的模型目录，模型调用经插件桥接到 `ctx.llm.stream()`，复用桌面 provider 配置与凭据；其他 profile 不会覆盖该目录；
@@ -269,7 +274,7 @@ node scripts/auth-browser-check.mjs
 - `build-release.mjs` 交叉编译五个平台后台，用 `npm pack` 生成每平台只含本平台后台的官方 bundle tarball，并写入 `manifest.json` 与 `SHA256SUMS`；
 - `package-check.mjs` 检查包标识、`dsh.bundle`/`dsh.client` 声明、`./client` 导出、图标大小、每平台布局、可执行位、checksum 与无 Go 源码；
 - `install-check.mjs` 解压当前平台发行包并验证插件与客户端 bundle 可加载、后台可启动和清理；
-- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和两个真实 DSH profile 验证原生侧边栏页面、用户级共享状态、单后台、桌面模型目录权威、跨 profile 会话、HTML/SVG 预览、人工评审、ModelTrace、桌面退出/接管清理、CLI 不启动后台与 HMR 重载；浏览器可用时通过 Playwright 点击侧边栏并操作主区域页面；
+- `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和真实 DSH profile 验证原生侧边栏页面、用户级共享状态、单后台、桌面模型目录权威、跨 profile 会话、CLI/Web 仅连接不启动、HTML/SVG 预览、人工评审、ModelTrace、桌面退出/接管清理与 HMR 重载；浏览器可用时通过 Playwright 点击侧边栏并操作主区域页面；
 - `dsh-lifecycle-check.mjs` 使用真实宿主桥接验证完整/缺用量/错误/截断/取消/独立复测/同名目标隔离/取消后重跑与重启持久化；
 - `dsh-auto-check.mjs` 使用隔离 `DSH_HOME` 和本地受控模型服务，以短间隔验证自动检测默认关闭、仅监测目标 milk、无业务对话触发、关闭/移除停止、并发合并、预算与清理、重启配置及退出取消；浏览器可用时通过原生页面开启自动检测并设置间隔，关闭页面后继续观察定时调用；
 - `plugin-check.mjs` 验证已安装包的原生插件启动共享后台、提供页面 API 并清理进程；

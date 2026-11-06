@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import http from 'node:http';
-import {backendBinary, createDshHarness, getState, openConsoleSession, postJSON, pluginConfigOverride} from './dsh-harness.mjs';
+import {backendBinary, createDshHarness, getState, openPageSession, postJSON, pluginConfigOverride} from './dsh-harness.mjs';
 
 // Real isolated DSH profile plus controlled host model services. This covers
 // the observable completion matrix introduced by #6 without a browser; the
@@ -128,11 +128,11 @@ ${provider('provider-two', 'Provider Two', two.origin, ['slow-model'])}
 ${pluginConfigOverride()}`;
 }
 
-async function openConsole(host) {
-  const {console, payload} = await openConsoleSession(host);
+async function openPage(host) {
+  const {client, payload} = await openPageSession(host);
   assert.ok(payload.catalog.some(entry => entry.provider === 'provider-one' && entry.model === 'complete-model'));
   assert.ok(payload.catalog.some(entry => entry.provider === 'provider-two' && entry.model === 'slow-model'));
-  return console;
+  return client;
 }
 
 async function post(client, pathname, body) {
@@ -183,7 +183,7 @@ try {
   assert.match(version, /^\d+\.\d+\.\d+/);
   await installProfile('lifecycle-check', lifecyclePatch());
   let host = await bootProfile('lifecycle-check');
-  let client = await openConsole(host);
+  let client = await openPage(host);
 
   for (const model of ['complete-model', 'cached-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model']) {
     await addTarget(client, 'provider-one', model);
@@ -256,7 +256,7 @@ try {
 
   await stopHost(host);
   host = await bootProfile('lifecycle-check');
-  client = await openConsole(host);
+  client = await openPage(host);
   const restored = await stateOf(client);
   const by = (providerId, model) => [...restored.results].reverse()
     .find(entry => entry.provider === providerId && entry.model === model && entry.prompt === 'milk');

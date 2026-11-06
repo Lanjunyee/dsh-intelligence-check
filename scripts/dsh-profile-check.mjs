@@ -5,7 +5,7 @@ import {readFile, rm, writeFile} from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
 import {createRequire} from 'node:module';
-import {backendBinary, createDshHarness, getState, openConsoleSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
+import {backendBinary, createDshHarness, getState, openPageSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
 
 const {home, work, env, hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
   prefix: 'dsh-ic',
@@ -19,7 +19,6 @@ const bundledPlaywright = '/Applications/ChatGPT.app/Contents/Resources/cua_node
 const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundledPlaywright) ? bundledPlaywright : '');
 const {chromium} = playwrightPath ? createRequire(import.meta.url)(playwrightPath) : {};
 
-const requests = [];
 const mock = http.createServer(async (request, response) => {
   if (request.url?.endsWith('/models')) {
     response.setHeader('content-type', 'application/json');
@@ -31,7 +30,6 @@ const mock = http.createServer(async (request, response) => {
   const body = JSON.parse(raw);
   const content = body.messages?.find(message => message.role === 'user')?.content;
   const prompt = typeof content === 'string' ? content : (content || []).map(part => part.text || '').join('');
-  requests.push({model: body.model, prompt});
   let answer = '46.24 inches';
   const traceCount = prompt.match(/(\d+)\s*个\s*1 到 355/);
   if (traceCount) {
@@ -133,54 +131,75 @@ try {
   assert.match(version, /^\d+\.\d+\.\d+/);
   await installProfile('check-a', patch('fixture-one'));
   await installProfile('check-b', patch('fixture-two'));
+  await installProfile('check-cli', patch('fixture-two'));
 
   const a = await bootProfile('check-a');
   assert.ok(existsSync(path.join(sharedDir, 'check.db')), '共享数据目录未创建');
   assert.equal(existsSync(path.join(home, 'profiles', 'check-a', 'dsh-intelligence-check', 'check.db')), false,
     '新版仍在 profile 目录创建数据');
-  const first = await openConsoleSession(a, {requireLogin: true});
-  let state = await stateOf(first.console);
+  const first = await openPageSession(a, {requireLogin: true});
+  let state = await stateOf(first.client);
   assert.deepEqual(state.targets, []);
   assert.equal(state.config.auto_enabled, false, '自动检测未默认关闭');
   assert.equal(state.config.interval_seconds, 900);
-  let payload = await getState(first.console);
+  let payload = await getState(first.client);
   assert.deepEqual(payload.catalog.map(entry => entry.model).sort(), ['html-model', 'shared-model', 'svg-model']);
 
   const b = await bootProfile('check-b');
-  const second = await openConsoleSession(b);
-  const joined = await getState(second.console);
+  const second = await openPageSession(b);
+  const joined = await getState(second.client);
   assert.deepEqual(joined.catalog.map(entry => entry.model).sort(), ['html-model', 'shared-model', 'svg-model'],
     '第二个 profile 覆盖了桌面模型目录');
   assert.equal(processes(sharedDir).length, 1, '同时使用时启动了多套后台');
 
-  await post(first.console, '/api/target', {provider: 'fixture-one', model: 'shared-model', enabled: false});
-  state = await stateOf(second.console);
+  // A plain CLI/Web profile joins the running desktop backend read-only.
+  const cli = await bootProfile('check-cli', {...env, DSH_INTELLIGENCE_CHECK_DESKTOP: undefined},
+    {readyMarker: '[dsh-intelligence-check] CLI host detected'});
+  const cliSession = await openPageSession(cli);
+  assert.deepEqual(cliSession.payload.catalog.map(entry => entry.model).sort(), ['html-model', 'shared-model', 'svg-model'],
+    'CLI profile 覆盖了桌面模型目录');
+  assert.equal(processes(sharedDir).length, 1, 'CLI profile 启动了第二套后台');
+
+  await post(first.client, '/api/target', {provider: 'fixture-one', model: 'shared-model', enabled: false});
+  state = await stateOf(second.client);
   assert.deepEqual(state.targets.map(target => `${target.provider}|${target.model}|${target.enabled}`),
     ['fixture-one|shared-model|false'], '第二个 profile 未看到共享目标');
+  state = await stateOf(cliSession.client);
+  assert.deepEqual(state.targets.map(target => `${target.provider}|${target.model}|${target.enabled}`),
+    ['fixture-one|shared-model|false'], 'CLI profile 未看到共享目标');
 
-  await post(second.console, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'milk'});
-  const milk = await waitResult(first.console, 'fixture-one', 'shared-model', 'milk', record => record.verdict !== 'running');
+  await post(second.client, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'milk'});
+  const milk = await waitResult(first.client, 'fixture-one', 'shared-model', 'milk', record => record.verdict !== 'running');
   assert.equal(milk.answer, '46.24 inches');
   assert.equal(milk.usage?.total_tokens, 17);
-  await post(second.console, `/api/results/${milk.id}/review`, {decision: 'accepted', note: 'shared review'});
-  state = await stateOf(first.console);
+  await post(second.client, `/api/results/${milk.id}/review`, {decision: 'accepted', note: 'shared review'});
+  state = await stateOf(first.client);
   assert.equal(state.results[0].review, 'accepted', '跨 profile 人工评审未共享');
 
   // HTML and SVG works stay available to the native page preview controls.
-  await post(first.console, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'html'});
-  const html = await waitResult(first.console, 'fixture-one', 'shared-model', 'html', record => record.verdict !== 'running');
+  await post(first.client, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'html'});
+  const html = await waitResult(first.client, 'fixture-one', 'shared-model', 'html', record => record.verdict !== 'running');
   assert.match(html.answer, /<h1 id="pelican">/);
-  await post(first.console, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'svg'});
-  const svg = await waitResult(first.console, 'fixture-one', 'shared-model', 'svg', record => record.verdict !== 'running');
+  const preview = await fetch(`${first.client.origin}/dsh-intelligence-check/api/results/${html.id}/preview`, {
+    headers: {cookie: first.client.session},
+  });
+  assert.equal(preview.status, 200, await preview.clone().text());
+  assert.match(preview.headers.get('content-security-policy') || '', /sandbox allow-scripts/,
+    '宿主代理丢失 HTML 预览 CSP');
+  assert.match(preview.headers.get('permissions-policy') || '', /camera=\(\)/,
+    '宿主代理丢失 HTML 预览 Permissions-Policy');
+  await preview.body?.cancel();
+  await post(first.client, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'test', prompt: 'svg'});
+  const svg = await waitResult(first.client, 'fixture-one', 'shared-model', 'svg', record => record.verdict !== 'running');
   assert.match(svg.answer, /<svg/);
 
-  await post(first.console, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'modeltrace'});
+  await post(first.client, '/api/action', {provider: 'fixture-one', model: 'shared-model', action: 'modeltrace'});
   for (let i = 0; i < 300; i++) {
-    const trace = (await stateOf(second.console)).results.filter(record => record.prompt === 'modeltrace');
+    const trace = (await stateOf(second.client)).results.filter(record => record.prompt === 'modeltrace');
     if (trace.length === 3 && trace.every(record => record.verdict !== 'running')) break;
     await wait(100);
   }
-  const trace = (await stateOf(second.console)).results.filter(record => record.prompt === 'modeltrace');
+  const trace = (await stateOf(second.client)).results.filter(record => record.prompt === 'modeltrace');
   assert.equal(trace.length, 3, 'ModelTrace 未生成三条挑战');
   assert.ok(trace.every(record => record.verdict === 'manual'), 'ModelTrace 挑战未完成');
 
@@ -225,7 +244,7 @@ try {
     await page.locator('.dic-modal input[type=number]').nth(0).fill('1');
     await page.getByRole('button', {name: '保存设置'}).click();
     await page.locator('.dic-modal').waitFor({state: 'detached', timeout: 15000});
-    state = await stateOf(second.console);
+    state = await stateOf(second.client);
     assert.equal(state.config.auto_enabled, true, '原生页面未保存自动检测开关');
     assert.equal(state.config.interval_seconds, 1, '原生页面未保存自动检测间隔');
     uiChecked = true;
@@ -233,13 +252,13 @@ try {
     browser = undefined;
   }
 
-  const persistedCount = (await stateOf(second.console)).results.length;
+  const persistedCount = (await stateOf(second.client)).results.length;
   assert.ok(persistedCount >= 3, '检测记录未保存');
 
   // The owner leaves; the remaining desktop host re-elects over the same SQLite state.
   await stopHost(a);
   await waitForProcessCount(0);
-  const recovered = await getState(second.console);
+  const recovered = await getState(second.client);
   assert.deepEqual(recovered.state.targets.map(target => `${target.provider}|${target.model}`), ['fixture-one|shared-model'],
     '接管后共享目标丢失');
   assert.equal(recovered.state.results.length, persistedCount, '接管后检测记录丢失');
@@ -250,28 +269,25 @@ try {
   await stopHost(b);
   await waitForProcessCount(0);
 
-  // A pure CLI host must not own the backend.
-  await installProfile('check-cli', patch('fixture-one'));
-  const cli = await bootProfile('check-cli', {...env, DSH_INTELLIGENCE_CHECK_DESKTOP: undefined},
-    {readyMarker: '[dsh-intelligence-check] CLI host detected'});
-  const cliLogin = await openConsoleSession(cli).catch(error => error);
+  // With no desktop backend running, a CLI host must neither start nor take over one.
+  const cliLogin = await openPageSession(cli).catch(error => error);
   assert.ok(cliLogin instanceof Error, 'CLI 主机的页面 API 不应可用');
-  assert.match(cliLogin.message, /401|503/, cliLogin.message);
-  assert.equal(processes(sharedDir).length, 0, 'CLI 主机启动了桌面后台');
+  assert.match(cliLogin.message, /503/, cliLogin.message);
+  assert.equal(processes(sharedDir).length, 0, 'CLI 主机启动或接管了桌面后台');
   await stopHost(cli);
   await uninstallProfile('check-cli');
 
   // Re-enabling a running desktop profile restores the single backend.
   const again = await bootProfile('check-a');
-  await openConsoleSession(again);
+  await openPageSession(again);
   const patchPath = path.join(home, 'profiles', 'check-a', 'cordis.patch.yml');
   const originalPatch = await readFile(patchPath, 'utf8');
   await writeFile(patchPath, originalPatch + '- id: dsh-intelligence-check\n  disabled: true\n');
   await waitForProcessCount(0);
   await writeFile(patchPath, originalPatch);
   await waitForProcessCount(1, 15000);
-  const reopened = await openConsoleSession(again);
-  assert.equal((await stateOf(reopened.console)).results.length, persistedCount, 'HMR 重载后检测记录丢失');
+  const reopened = await openPageSession(again);
+  assert.equal((await stateOf(reopened.client)).results.length, persistedCount, 'HMR 重载后检测记录丢失');
   await stopHost(again);
   await waitForProcessCount(0);
 

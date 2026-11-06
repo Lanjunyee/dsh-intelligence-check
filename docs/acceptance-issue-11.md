@@ -78,6 +78,8 @@
 - 本机未发现旧版 `~/.config/dsh-intelligence-check` 数据目录；实现不引用该路径，验收未创建或修改任何旧版/真实 profile 数据。
 - 测试进程、临时 profile 与受控模型服务均在各自脚本 `finally` 中关闭并删除。
 
+> **历史边界说明（Issue #12）**：本节“新数据固定在 `$DSH_HOME/profiles/<name>/dsh-intelligence-check/`；同一 profile 共享，跨 profile 隔离”是 Issue #11 当时的验收事实。Issue #12 起改为同一用户同机共享 `$DSH_HOME/dsh-intelligence-check/` 与单一桌面后台，跨 profile 读取同一状态；旧验收事实不改写，新边界见 [ADR 0002](adr/0002-desktop-panel-and-shared-check-state.md) 与 [Issue #12 验收记录](acceptance-issue-12.md)。
+
 ## 7. 复现命令
 
 ```sh

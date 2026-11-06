@@ -5,7 +5,7 @@ import {rm} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import http from 'node:http';
 import path from 'node:path';
-import {backendBinary, createDshHarness, getState, openConsoleSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
+import {backendBinary, createDshHarness, getState, openPageSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
 
 // Real isolated DSH profile plus a controlled host model service. Automatic
 // checks are exercised only through the host bridge; no business conversation
@@ -107,10 +107,10 @@ async function installAutoProfile(name) {
   return path.join(home, 'dsh-intelligence-check');
 }
 
-async function openConsole(host) {
-  const {console, payload} = await openConsoleSession(host);
+async function openPage(host) {
+  const {client, payload} = await openPageSession(host);
   assert.ok(payload.catalog.some(entry => entry.provider === 'auto-provider' && entry.model === 'watched-model'));
-  return console;
+  return client;
 }
 
 const post = (client, pathname, body) => postJSON(client, pathname, body);
@@ -204,7 +204,7 @@ try {
   assert.match(version, /^\d+\.\d+\.\d+/);
   const dataDir = await installAutoProfile('auto-check');
   let host = await bootProfile('auto-check');
-  let client = await openConsole(host);
+  let client = await openPage(host);
   let payload = await stateOf(client);
   assert.equal(payload.state.config.auto_enabled, false, '自动检测未默认关闭');
   assert.equal(payload.state.config.interval_seconds, 900, '默认间隔不是 15 分钟');
@@ -270,7 +270,7 @@ try {
   await configure(client, true, 2, 1);
   await stopHost(host);
   host = await bootProfile('auto-check');
-  client = await openConsole(host);
+  client = await openPage(host);
   payload = await stateOf(client);
   assert.equal(payload.state.config.auto_enabled, true, '重启后自动检测开关丢失');
   assert.equal(payload.state.config.interval_seconds, 2, '重启后自动检测间隔丢失');

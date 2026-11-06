@@ -6,7 +6,6 @@
 const h = React.createElement;
 const useState = React.useState;
 const useEffect = React.useEffect;
-const useMemo = React.useMemo;
 const useRef = React.useRef;
 const useCallback = React.useCallback;
 
@@ -501,23 +500,23 @@ function CheckPage() {
           h('span', {className: 'dic-hint'}, label), h('span', null, value)))) : null,
       answer && !running && record ? h('form', {className: 'dic-review', onSubmit: event => {
         event.preventDefault();
-        act('review', `/results/${encodeURIComponent(record.id)}/review`, {decision: review.decision, note: review.note}, '审核已保存');
+        act('review', `/results/${encodeURIComponent(record.id)}/review`, {decision: review.decision, note: review.note}, '评审已保存');
       }},
       h('div', {className: 'dic-section-head'},
-        h('h2', null, '人工审核'),
+        h('h2', null, '人工评审'),
         h('span', {className: 'dic-hint'}, record.review
-          ? `${core.reviewNames[record.review]} / ${core.dateTime(record.reviewed_at)}` : '未审核')),
+          ? `${core.reviewNames[record.review]} / ${core.dateTime(record.reviewed_at)}` : '未评审')),
       h('div', {className: 'dic-review-fields'},
-        h(Field, {label: '审核结论'},
+        h(Field, {label: '评审结论'},
           h('select', {className: 'dic-select', value: review.decision,
             onChange: event => setReview({...review, decision: event.target.value, dirty: true})},
             ...Object.entries(core.reviewNames).map(([value, label]) => h('option', {value, key: value}, label)))),
-        h(Field, {label: '审核备注'},
+        h(Field, {label: '评审备注'},
           h('textarea', {className: 'dic-input', rows: 3, maxLength: 1000, placeholder: '记录判断依据或待复核的问题',
             value: review.note, onChange: event => setReview({...review, note: event.target.value, dirty: true})}))),
       h('div', {className: 'dic-modal-actions'},
-        h('span', {className: 'dic-hint'}, '审核仅记录评价，不影响模型调用。'),
-        h(Button, {primary: true, type: 'submit', icon: 'check', busy: busy === 'review', label: '保存审核'}, '保存审核'))) : null,
+        h('span', {className: 'dic-hint'}, '评审仅记录评价，不影响模型调用。'),
+        h(Button, {primary: true, type: 'submit', icon: 'check', busy: busy === 'review', label: '保存评审'}, '保存评审'))) : null,
       h('details', {className: 'dic-details'},
         h('summary', null, '提示词原文'),
         h('pre', {className: 'dic-pre'}, promptInfo?.text || '')),
@@ -611,7 +610,7 @@ function CheckPage() {
           ['model', '模型', [['', '全部模型'], ...Array.from(new Map([...targets, ...(state.results || [])].map(item => [core.identity(item.provider, item.model), core.modelLabel(item.provider, item.model)]))) ]],
           ['verdict', '结果', [['', '全部结果'], ...Object.entries(core.names).map(([value, label]) => [value, label])]],
           ['prompt', '题目', [['', '全部题目'], ...prompts.map(item => [item.id, item.name]), ['modeltrace', 'ModelTrace']]],
-          ['review', '审核', [['', '全部审核'], ...Object.entries(core.reviewNames).map(([value, label]) => [value, label])]],
+          ['review', '评审', [['', '全部评审'], ...Object.entries(core.reviewNames).map(([value, label]) => [value, label])]],
         ].map(([key, label, options]) => h(Field, {label, key},
           h('select', {className: 'dic-select', value: history[key],
             onChange: event => { setHistory({...history, [key]: event.target.value}); setLimit(30); }},
@@ -620,7 +619,7 @@ function CheckPage() {
           JSON.stringify({exported_at: new Date().toISOString(), results: filtered}, null, 2), 'application/json')}),
         h(Button, {icon: 'trash', label: '清理筛选记录', disabled: !filtered.length, busy: busy === 'clear',
           onClick: () => {
-            if (!window.confirm(`永久清理当前筛选的 ${filtered.length} 条记录？原始回答与审核将删除，已消耗预算保持不变。`)) return;
+            if (!window.confirm(`永久清理当前筛选的 ${filtered.length} 条记录？原始回答与评审将删除，已消耗预算保持不变。`)) return;
             act('clear', '/results/clear', {ids: filtered.map(item => item.id)}, '记录已清理，已消耗预算保持不变');
           }})),
       h('div', {className: 'dic-records'}, ...(shownRecords.length === 0
@@ -635,7 +634,7 @@ function CheckPage() {
           h('div', {className: 'dic-record-body'},
             item.error ? h('p', {className: 'dic-error'}, item.error) : null,
             item.review ? h('p', {className: 'dic-hint'},
-              `人工审核：${core.reviewNames[item.review]}${item.review_note ? ` / ${item.review_note}` : ''}`) : null,
+              `人工评审：${core.reviewNames[item.review]}${item.review_note ? ` / ${item.review_note}` : ''}`) : null,
             h('pre', {className: 'dic-pre'}, item.answer || (item.verdict === 'running' ? '等待回答' : '未返回回答正文')),
             h(Button, {icon: 'download', label: '下载原始回答', disabled: !item.answer,
               onClick: () => download(`result-${item.id}.txt`, item.answer || '')}, '下载原始回答'),

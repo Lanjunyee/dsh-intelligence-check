@@ -1,5 +1,6 @@
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
+import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {hostTarget} from './platform.mjs';
 
@@ -14,7 +15,7 @@ export function resolveBinary(root, config = {}) {
   return path.join(root, 'bin', `quality-check${suffix}`);
 }
 
-export function createBackend({binaryPath, dataDir, bridge, shared = false}) {
+export function createBackend({binaryPath, dataDir, bridge, shared = false, manage = true}) {
   let child;
   let ready;
   let origin = '';
@@ -71,16 +72,27 @@ export function createBackend({binaryPath, dataDir, bridge, shared = false}) {
     return ready;
   }
 
-  async function consoleUrl() {
-    const response = await fetch(origin + '/api/console', {
-      method: 'POST',
-      headers: {authorization: 'Bearer ' + control, 'content-type': 'application/json'},
-      body: '{}',
-    });
-    if (!response.ok) throw new Error((await response.text()).trim() || `控制台入口签发失败（HTTP ${response.status}）`);
-    const {url} = await response.json();
-    if (typeof url !== 'string' || !url.startsWith(origin + '/open/')) throw new Error('控制台入口地址无效');
-    return url;
+  // A non-managing host (plain CLI or `dsh web`) may only join an already
+  // running desktop backend. It never spawns or takes over the process.
+  async function attach() {
+    let raw;
+    try {
+      raw = await readFile(path.join(dataDir, 'connection.json'), 'utf8');
+    } catch {
+      return false;
+    }
+    let record;
+    try {
+      record = JSON.parse(raw);
+    } catch {
+      return false;
+    }
+    if (typeof record?.origin !== 'string' || record.origin === ''
+      || typeof record?.control !== 'string' || record.control === '') return false;
+    origin = record.origin;
+    control = record.control;
+    owner = false;
+    return true;
   }
 
   async function setCatalog(models) {
@@ -107,8 +119,8 @@ export function createBackend({binaryPath, dataDir, bridge, shared = false}) {
   // data survives in SQLite, so a new backend serves the same shared state.
   async function ensure() {
     if (await healthy()) return true;
-    if (await healthy()) return true;
-    try { await stop(); } catch {}
+    if (!manage) return (await attach()) && healthy();
+    await stop();
     ready = undefined;
     child = undefined;
     origin = '';
@@ -138,5 +150,5 @@ export function createBackend({binaryPath, dataDir, bridge, shared = false}) {
     clearTimeout(timer);
   }
 
-  return {start, ensure, healthy, consoleUrl, setCatalog, stop, get origin() { return origin; }, get control() { return control; }, get owner() { return owner; }};
+  return {start, attach, ensure, healthy, setCatalog, stop, get origin() { return origin; }, get control() { return control; }, get owner() { return owner; }};
 }

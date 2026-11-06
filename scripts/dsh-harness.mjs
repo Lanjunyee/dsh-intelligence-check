@@ -8,7 +8,7 @@ import {hostTarget} from '../plugin/platform.mjs';
 
 // Shared real-DSH harness for the profile, lifecycle and automatic checks.
 // Each caller still owns its controlled model service, patch content and
-// assertions; only the isolated home, install/boot/stop and console session
+// assertions; only the isolated home, install/boot/stop and page API session
 // exchange are shared here.
 export const root = path.resolve(import.meta.dirname, '..');
 export const dsh = process.env.DSH_BINARY || (existsSync('/usr/local/bin/dsh') ? '/usr/local/bin/dsh' : 'dsh');
@@ -88,7 +88,7 @@ export function cookieHeader(response) {
     .filter(Boolean).map(value => value.split(';')[0]).join('; ');
 }
 
-export async function openConsoleSession(host, {requireLogin = false} = {}) {
+export async function openPageSession(host, {requireLogin = false} = {}) {
   const origin = host.origin();
   if (requireLogin) {
     const refused = await fetch(origin + '/dsh-intelligence-check/api/state');
@@ -99,7 +99,7 @@ export async function openConsoleSession(host, {requireLogin = false} = {}) {
   const session = cookieHeader(login);
   const client = {origin, session};
   const payload = await getState(client);
-  return {console: client, client, payload};
+  return {client, payload};
 }
 
 export async function postJSON(client, pathname, body) {
