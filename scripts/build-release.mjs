@@ -14,7 +14,7 @@ for(const [goos,goarch] of platforms){
  const suffix=goos==='windows'?'.exe':'';
  const name=`quality-check-${goos}-${goarch}${suffix}`;
  const output=path.join(dist,name);
- const result=spawnSync('go',['build','-trimpath','-ldflags=-s -w','-o',output,'./cmd/quality-check'],{cwd:root,env:{...process.env,CGO_ENABLED:'0',GOOS:goos,GOARCH:goarch},stdio:'inherit'});
+ const result=spawnSync('go',['build','-trimpath','-buildvcs=false','-ldflags=-s -w','-o',output,'./cmd/quality-check'],{cwd:root,env:{...process.env,CGO_ENABLED:'0',GOOS:goos,GOARCH:goarch},stdio:'inherit'});
  if(result.status!==0)throw Error(`Build failed: ${name}`);
  await mkdir(path.join(root,'bin'),{recursive:true});
  await copyFile(output,path.join(root,'bin',name));
