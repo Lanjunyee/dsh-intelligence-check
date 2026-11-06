@@ -1,6 +1,6 @@
 # Issue #12 统一审查修复记录
 
-基线为集成分支 `integration/issue-12-native-desktop-panel` tip `b2d5259`；修复提交 `9f859dd0fa65f5edad407173d4f1a94c4dd059b0`（本记录随后单独提交）。审查输入为 `/tmp/dsh-issue-12-review-fix-input.md` 的两轴报告，逐项核实后处理如下。
+基线为集成分支 `integration/issue-12-native-desktop-panel` tip `b2d5259`；修复提交 `9f859dd0fa65f5edad407173d4f1a94c4dd059b0`，补修提交 `1b0a9283bed511983f9a9b0ea3f8ee503207a6f5`（CLI 先启动的延迟连接与 README 兼容段）。本记录随后单独提交。审查输入为 `/tmp/dsh-issue-12-review-fix-input.md` 的两轴报告，逐项核实后处理如下。
 
 ## Standards 轴
 
@@ -18,8 +18,8 @@
 
 | # | 审查项 | 核实与处理 | 验证 |
 |---|---|---|---|
-| 1 | 非桌面标记的第二 profile 在桌面后台运行时仍 503；CLI/Web 不应启动或接管后台，也不应覆盖桌面模型目录 | 属实。非桌面宿主现在只读取共享数据目录的 `connection.json` 并连接已运行后台，`manage: false` 保证不派生进程、不参与接管；模型目录事件只在桌面宿主注册，`owner=false` 时不推送。桌面应用未运行时保持 503。 | 单测新增“CLI 仅 join、不启动、不覆盖目录、桌面退出后 503”；真实 DSH 宿主脚本新增运行中 CLI profile join 与无桌面时 503 断言。 |
-| 2 | README 声称在桌面使用 `--profile <name>`，但 Desktop 固定 `profiles/desktop` | 属实。宿主源码与真实验收均确认固定 `$DSH_HOME/profiles/desktop`。安装、开发与卸载说明改为 `--profile desktop`，并说明其他 profile 仅供 CLI/Web 只读查看。 | 真实 Desktop 以 `--profile desktop` 安装成功并出现侧栏入口。 |
+| 1 | 非桌面标记的第二 profile 在桌面后台运行时仍 503；CLI/Web 不应启动或接管后台，也不应覆盖桌面模型目录 | 属实。非桌面宿主现在只读取共享数据目录的 `connection.json` 并连接已运行后台，`manage: false` 保证不派生进程、不参与接管；模型目录事件只在桌面宿主注册，`owner=false` 时不推送。桌面应用未运行时保持 503；若 CLI/Web 先启动、Desktop 后启动，请求时会再次只执行 attach，无需重启 CLI 宿主。 | 单测新增“CLI 仅 join、不启动、不覆盖目录、桌面退出后 503”与“先 CLI 后 Desktop 的请求时补连”；真实 DSH 宿主脚本新增运行中 CLI profile join 与无桌面时 503 断言。 |
+| 2 | README 声称在桌面使用 `--profile <name>`，但 Desktop 固定 `profiles/desktop` | 属实。宿主源码与真实验收均确认固定 `$DSH_HOME/profiles/desktop`。安装、开发与卸载说明改为 `--profile desktop`，并说明其他 profile 供 CLI/Web 连接共享后台。 | 真实 Desktop 以 `--profile desktop` 安装成功并出现侧栏入口。 |
 | 3 | 宿主代理剥离 HTML 预览的 CSP/Permissions-Policy | 属实。`SAFE_HEADERS` 增加两项，恢复 Go 预览的 `sandbox allow-scripts`、`connect-src 'none'` 等策略。 | 单测用真实代理链路断言响应头；真实 DSH 宿主脚本对预览响应断言 CSP 与 Permissions-Policy。 |
 | 4 | 接管后模型目录只同步一次 | 与 Standards #7 同一修复。 | 同上。 |
 | 5 | ADR 链接错误；`docs/acceptance-issue-11.md` 的旧 profile 隔离边界需标注 | ADR 链接已修；Issue #11 文档仅新增历史边界说明，声明该节验收事实已被 Issue #12 共享设计取代，未改写旧事实。 | 文档检查。 |
@@ -37,7 +37,7 @@
 |---|---|
 | `go vet ./...` | PASS |
 | `go test -race ./...` | PASS，82 项，2 个包 |
-| `node --test plugin/*.test.mjs scripts/ui.test.mjs` | PASS，23 项 |
+| `node --test plugin/*.test.mjs scripts/ui.test.mjs` | PASS，24 项（含先 CLI 后 Desktop 的请求时补连） |
 | `node scripts/build-release.mjs`（连续两次） | PASS，10 项 SHA-256 一致 |
 | `node scripts/package-check.mjs` | PASS |
 | `node scripts/install-check.mjs` | PASS |
@@ -51,8 +51,8 @@
 | 产物 | SHA-256 |
 |---|---|
 | `plugin/client.js`（76,892 B） | `73dffc85781365fcd835d89c4e9a7e8016e06d178efd3bdd84a627f6538826c5` |
-| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,912,661 B） | `12f6485929f654e26824ac1193bcd898621be3a35bc4de78e863a5ff75307cc6` |
+| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,912,832 B） | `d761c8a2af7913a003d96010079309c60868a6d517499dbed9dc5c013cd7c9bb` |
 | `dist/quality-check-darwin-arm64` | `9b86c7d705b32e60356e7a7c8f72b487145d95b9c8c4e470cfe4bf6835159cc9` |
-| `dist/SHA256SUMS` | `cebf5b043f199d15d64890e3a6cc99e952218792f54466b891b2780c0303a073` |
+| `dist/SHA256SUMS` | `cddb548072c8f6fac1092b992b51dde5869a19d2dcd2ba6eed785140e8c296ed` |
 
 五平台完整哈希见 `dist/SHA256SUMS`；解包后的 `package/plugin/client.js` 与上表客户端哈希一致。

@@ -50,14 +50,14 @@
 | `go vet ./...` | PASS |
 | `go test -race ./...` | PASS，82 项，2 个包 |
 | `node scripts/build-client.mjs` | PASS，生成 `plugin/client.js` |
-| `node --test plugin/*.test.mjs scripts/ui.test.mjs` | PASS，23 项 |
+| `node --test plugin/*.test.mjs scripts/ui.test.mjs` | PASS，24 项 |
 | `node scripts/package-check.mjs` | PASS：包标识、`dsh.client.platform = web`、`exports['./client']`、图标、五平台包布局、可执行位、checksum、无 Go 源码 |
 | `node scripts/install-check.mjs` | PASS：当前平台 tarball 解压后客户端 bundle 可加载、共享后台可启动、页面 API 可用并清理进程 |
 
 新增/更新的行为测试覆盖：
 
 - Go：非共享数据目录被占用时拒绝；共享 joiner 读取 owner 连接信息、`connection.json` 为 0600、owner 收到 SIGTERM 后连接文件删除。
-- 插件：桌面判定与数据目录；CLI/Web 宿主只读取共享连接并连接已运行桌面后台，不派生进程、不接管、不推送自身模型目录，桌面后台退出后返回 503；两个 profile 共享单后台、单模型目录权威、owner 接管后继续接收模型目录更新；原生页面 API 拒绝未认证宿主请求并转发预览 CSP/Permissions-Policy；joined 实例不停止 owner 进程。
+- 插件：桌面判定与数据目录；CLI/Web 宿主只读取共享连接信息并连接已运行桌面后台，不派生进程、不接管、不推送自身模型目录，桌面后台退出后返回 503；CLI/Web 先于 Desktop 启动时，后续请求会重试只 join 的连接；两个 profile 共享单后台、单模型目录权威、owner 接管后继续接收模型目录更新；原生页面 API 拒绝未认证宿主请求并转发预览 CSP/Permissions-Policy；joined 实例不停止 owner 进程。
 - 客户端：模块加载器单工厂契约、侧边栏与 main 注册、空状态、四个标签页渲染、共享纯函数（用量缺失不显示为零、缓存用量不重复计推理、预览会话过期等）。
 
 ## 5. 验收边界与未执行项
@@ -95,20 +95,20 @@ node scripts/dsh-auto-check.mjs
 
 ## 8. 审查修复后的最终提交与产物
 
-修复提交为 `9f859dd0fa65f5edad407173d4f1a94c4dd059b0`；两轴逐项处理与证据见 [审查修复记录](review-issue-12.md)。本轮只改插件、客户端 bundle、集成脚本与文档，Go 源码未变，因此五平台后台哈希与初始实现轮一致；tarball 因新 `plugin/client.js` 而更新。
+修复提交为 `9f859dd0fa65f5edad407173d4f1a94c4dd059b0`，补修提交为 `1b0a9283bed511983f9a9b0ea3f8ee503207a6f5`（CLI 先于 Desktop 启动时的请求时补连、README 兼容段）；两轴逐项处理与证据见 [审查修复记录](review-issue-12.md)。本轮只改插件、客户端 bundle、集成脚本与文档，Go 源码未变，因此五平台后台哈希与初始实现轮一致；tarball 因新 `plugin/client.js` 与文档更新而更新。
 
-从最终源码（修复提交 `9f859dd`，README 最终修订含于随后的文档提交 `5c0c3e6`）连续两次执行 `node scripts/build-client.mjs` 与 `node scripts/build-release.mjs`，两次 `dist/SHA256SUMS` 完全一致：
+从最终源码（修复提交 `9f859dd`、补修提交 `1b0a928`）连续两次执行 `node scripts/build-client.mjs` 与 `node scripts/build-release.mjs`，两次 `dist/SHA256SUMS` 完全一致：
 
 | 产物 | SHA-256 |
 |---|---|
 | `plugin/client.js`（76,892 B） | `73dffc85781365fcd835d89c4e9a7e8016e06d178efd3bdd84a627f6538826c5` |
-| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,912,661 B） | `12f6485929f654e26824ac1193bcd898621be3a35bc4de78e863a5ff75307cc6` |
+| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,912,832 B） | `d761c8a2af7913a003d96010079309c60868a6d517499dbed9dc5c013cd7c9bb` |
 | `dist/quality-check-darwin-arm64`（12,933,858 B） | `9b86c7d705b32e60356e7a7c8f72b487145d95b9c8c4e470cfe4bf6835159cc9` |
 | `dist/quality-check-darwin-amd64` | `7a64b5c8218d779aa6f3bea497250ad46ffd24910ebb1e1c8ad5715ed7874ab6` |
 | `dist/quality-check-linux-amd64` | `9ce41922353d3cc793e60d5262c34498f948aaad9ef2009705d5618ce3ff8e5c` |
 | `dist/quality-check-linux-arm64` | `9c39eea03874279acf4f3899f195a3bb96b38bf4fc9bad339ed5d38e3fde49c7` |
 | `dist/quality-check-windows-amd64.exe` | `8441c60e54fe428d2e54bb7f1a515b4249c284f68856ed12d18c53ddbc677a1e` |
-| `dist/SHA256SUMS` | `cebf5b043f199d15d64890e3a6cc99e952218792f54466b891b2780c0303a073` |
+| `dist/SHA256SUMS` | `cddb548072c8f6fac1092b992b51dde5869a19d2dcd2ba6eed785140e8c296ed` |
 
 `dist/SHA256SUMS` 的十项产物全部通过 `package-check` 校验；解包后的 `package/plugin/client.js` 与上表客户端哈希一致，证明 tarball 不再缺客户端 bundle。`install-check` 通过。主检出中遗留的旧 `dist/` 不得作为交付物；最终集成必须使用本节产物或从最终提交重新构建。
 
@@ -116,6 +116,7 @@ node scripts/dsh-auto-check.mjs
 
 | 检查 | 结果 |
 |---|---|
+| `node --test plugin/*.test.mjs scripts/ui.test.mjs` | PASS，24 项；含“CLI/Web 先启动、Desktop 后启动”时请求重试只 join 的回归，CLI 不派生也不接管后台 |
 | `dsh-profile-check.mjs`（最终 tarball，Playwright Web UI） | PASS：跨 profile 共享、CLI/Web 仅连接、桌面退出/接管、模型目录权威、CSP/Permissions-Policy 实际响应头、HTML/SVG 预览 |
 | `dsh-lifecycle-check.mjs`（最终 tarball） | PASS：完整/缺用量/错误/截断/取消/独立复测/同名目标/重启持久化 |
 | `dsh-auto-check.mjs`（最终 tarball，Playwright Web UI） | PASS：自动检测默认关闭、仅监测目标、关闭/移除停止、预算、重启与退出清理 |
