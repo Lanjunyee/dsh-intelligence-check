@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// Access owns management credentials separately from the model gateway key.
+// Access owns management credentials separately from host model credentials.
 type Access struct {
 	mu       sync.Mutex
 	control  string

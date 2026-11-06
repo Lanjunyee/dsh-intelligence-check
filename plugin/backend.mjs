@@ -79,6 +79,15 @@ export function createBackend({binaryPath, dataDir}) {
     return url;
   }
 
+  async function setCatalog(models) {
+    const response = await fetch(origin + '/api/catalog', {
+      method: 'POST',
+      headers: {authorization: 'Bearer ' + control, 'content-type': 'application/json'},
+      body: JSON.stringify({models}),
+    });
+    if (!response.ok) throw new Error((await response.text()).trim() || `模型目录同步失败（HTTP ${response.status}）`);
+  }
+
   async function stop() {
     const running = child;
     if (!running || running.exitCode !== null) return;
@@ -92,5 +101,5 @@ export function createBackend({binaryPath, dataDir}) {
     clearTimeout(timer);
   }
 
-  return {start, consoleUrl, stop};
+  return {start, consoleUrl, setCatalog, stop};
 }

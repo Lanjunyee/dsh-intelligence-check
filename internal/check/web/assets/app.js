@@ -1,4 +1,4 @@
-import { $, text, icon, hydrateIcons, syncSelect, dateTime, names } from './ui.js';
+import { $, text, icon, hydrateIcons, syncSelect, dateTime, names, identity, modelLabel } from './ui.js';
 import { filteredHistory, renderHistory, renderComparison, exportFilteredHistory, resetHistoryLimit, loadMoreHistory } from './history.js';
 import { renderModelTrace, runModelTrace } from '../modeltrace/panel.js';
 import { analyzeAnswer } from './answer-analysis.js';
@@ -7,9 +7,6 @@ import { renderHTMLPreview, stopHTMLPreview } from './html-preview.js';
 
 let data, polling = false, stopped = false, pollError = '', targetSignature;
 const config = $('#config');
-const secretType = 'pass' + 'word';
-config.elements.gateway_key.type = secretType;
-config.elements.gateway_key.autocomplete = 'new-' + secretType;
 let configDirty = false;
 let awaitingTest;
 const testErrors = new Map();
@@ -77,51 +74,45 @@ function openSettings() {
   if (!$('#settingsDialog').open) $('#settingsDialog').showModal();
 }
 $('#settings').onclick = openSettings;
-$('#connectSettings').onclick = openSettings;
 $('#closeSettings').onclick = () => $('#settingsDialog').close();
 $('#settingsDialog').onclick = event => { if (event.target === $('#settingsDialog')) {
   const rect = event.target.getBoundingClientRect();
   if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) event.target.close();
 } };
 config.oninput = () => { configDirty = true; };
-$('#showKey').onclick = () => {
-  const show = config.elements.gateway_key.type === secretType;
-  config.elements.gateway_key.type = show ? 'text' : secretType;
-  $('#showKey').replaceChildren(icon(show ? 'EyeOff' : 'Eye'));
-  $('#showKey').setAttribute('aria-label', show ? '隐藏输入的 Key' : '显示输入的 Key');
-  $('#showKey').dataset.tooltip = $('#showKey').getAttribute('aria-label');
-};
-function requireGateway() {
-  if (data?.gateway_configured) return true;
-  openSettings();
-  $('#configMessage').textContent = '请保存 Magpie 网关 URL 和 Key；本机默认 Key 为 magpie。';
-  config.elements.gateway_url.focus();
-  return false;
+function selectedTarget() {
+  const key = $('#model').value;
+  return data?.state.targets.find(target => identity(target.provider, target.model) === key);
 }
-function modelRunning(model) { return data?.state.results?.some(r => r.model === model && r.verdict === 'running'); }
+function modelRunning(provider, model) {
+  return data?.state.results?.some(r => r.provider === provider && r.model === model && r.verdict === 'running');
+}
 function renderControls() {
   if (!data) return;
-  $('#run').disabled = $('#run').hasAttribute('aria-busy') || !$('#model').value || modelRunning($('#model').value);
+  const target = selectedTarget();
+  $('#run').disabled = $('#run').hasAttribute('aria-busy') || !target || modelRunning(target.provider, target.model);
   renderTestAnswer();
   renderModelTrace(data);
 }
 function renderTestAnswer() {
   if (!data) return;
-  const model = $('#model').value, prompt = $('#prompt').value;
-  const submissionError = testErrors.get(JSON.stringify([model, prompt]));
-  const records = data.state.results.filter(r => r.model === model && r.prompt === prompt).reverse();
-  if (awaitingTest?.model === model && awaitingTest.prompt === prompt && records.some(r => !awaitingTest.ids.has(r.id))) awaitingTest = undefined;
-  const waiting = awaitingTest?.model === model && awaitingTest.prompt === prompt;
+  const target = selectedTarget();
+  const provider = target?.provider, model = target?.model;
+  const prompt = $('#prompt').value;
+  const submissionError = testErrors.get(JSON.stringify([provider, model, prompt]));
+  const records = data.state.results.filter(r => r.provider === provider && r.model === model && r.prompt === prompt).reverse();
+  if (awaitingTest?.provider === provider && awaitingTest?.model === model && awaitingTest.prompt === prompt && records.some(r => !awaitingTest.ids.has(r.id))) awaitingTest = undefined;
+  const waiting = awaitingTest?.provider === provider && awaitingTest?.model === model && awaitingTest.prompt === prompt;
   syncSelect($('#testRecord'), [['', '最新回答'], ...records.map(r => [r.id, `${dateTime(r.time)} / ${names[r.verdict] || r.verdict}`])]);
   $('#testRecord').disabled = waiting || !records.length;
   const record = waiting ? undefined : records.find(r => r.id === $('#testRecord').value) || records[0];
   const running = waiting || record?.verdict === 'running';
-  $('#cancelTest').hidden = !data.state.results.some(r => r.model === model && r.verdict === 'running' && r.prompt !== 'modeltrace');
+  $('#cancelTest').hidden = !data.state.results.some(r => r.provider === provider && r.model === model && r.verdict === 'running' && r.prompt !== 'modeltrace');
   const answer = record?.answer || '';
   const elapsed = record ? Math.max(0, Math.floor((Date.now() - Date.parse(record.time)) / 1000)) : 0;
   $('#testStatus').textContent = running ? `检测进行中，已等待 ${elapsed} 秒（最长 180 秒）。` : record ? record.verdict === 'unavailable' ? '检测未完成' : '检测完成' : modelRunning(model) ? '该模型正在运行其他检测。' : '';
   $('#testStatus').className = 'inline-state' + (record?.verdict === 'unavailable' ? ' error' : '');
-  $('#answerMeta').textContent = record ? `${record.model} / ${dateTime(record.time)} / ${names[record.verdict] || record.verdict} / ${record.tokens || 0} tokens` : model ? `${model} / ${data.prompts.find(p => p.id === prompt)?.name || ''}` : '尚未选择测试模型';
+  $('#answerMeta').textContent = record ? `${modelLabel(record.provider, record.model)} / ${dateTime(record.time)} / ${names[record.verdict] || record.verdict} / ${record.tokens || 0} tokens` : target ? `${modelLabel(provider, model)} / ${data.prompts.find(p => p.id === prompt)?.name || ''}` : '尚未添加检测目标';
   $('#answerError').hidden = !record?.error && !submissionError;
   $('#answerError').textContent = submissionError || record?.error || '';
   const content = answer || (running ? '正在等待模型回答…' : record ? record.error ? '本次请求未返回回答正文。' : '本次回答为空。' : '当前模型和题目暂无回答');
@@ -157,59 +148,63 @@ function showPrompt() {
   $('#promptText').textContent = data?.prompts.find(p => p.id === $('#prompt').value)?.text || '';
   $('#guidance').textContent = data?.guidance?.[$('#prompt').value] || '';
 }
-function dayCount(model) {
+function dayCount(provider, model) {
   const day = new Date().toISOString().slice(0, 10);
   const cleared = data.state.cleared_usage?.[day] || {};
-  return data.state.results.filter(r => (!model || r.model === model) && new Date(r.time).toISOString().slice(0, 10) === day).length + (model ? cleared[model] || 0 : Object.values(cleared).reduce((a, b) => a + b, 0));
+  const count = data.state.results.filter(r => (!provider || (r.provider === provider && r.model === model)) && new Date(r.time).toISOString().slice(0, 10) === day).length;
+  if (provider) return count + (cleared[provider]?.[model] || 0);
+  return count + Object.values(cleared).reduce((total, byModel) => total + Object.values(byModel).reduce((a, b) => a + b, 0), 0);
 }
 function renderTargets() {
-  const targets = Object.values(data.state.targets);
-  const signature = JSON.stringify([targets, data.state.results.filter(r => r.verdict === 'running').map(r => r.model), data.state.config.daily_limit, targets.map(t => dayCount(t.model))]);
+  const targets = data.state.targets;
+  const signature = JSON.stringify([targets, data.state.results.filter(r => r.verdict === 'running').map(r => identity(r.provider, r.model)), data.state.config.daily_limit, targets.map(t => dayCount(t.provider, t.model))]);
   if (signature === targetSignature) return;
   targetSignature = signature;
   const rows = targets.map(target => {
     const row = document.createElement('tr');
+    const provider = text('td', target.provider, 'model-id');
+    provider.dataset.label = '提供方';
     const model = text('td', target.model, 'model-id');
     model.dataset.label = '模型';
-    const budget = text('td', `${dayCount(target.model)} / ${data.state.config.daily_limit}`, 'numeric');
+    const budget = text('td', `${dayCount(target.provider, target.model)} / ${data.state.config.daily_limit}`, 'numeric');
     budget.dataset.label = '今日预算 (UTC)';
     const actions = text('td', '');
     actions.dataset.label = '操作';
     const tools = text('div', '', 'actions');
+    const label = modelLabel(target.provider, target.model);
     const retest = text('button', '', 'icon-button');
     retest.type = 'button'; retest.append(icon('RefreshCw'));
-    retest.setAttribute('aria-label', `重新检测 ${target.model}`);
+    retest.setAttribute('aria-label', `重新检测 ${label}`);
     retest.dataset.tooltip = '重新检测'; retest.title = '重新检测';
-    retest.disabled = modelRunning(target.model);
+    retest.disabled = modelRunning(target.provider, target.model);
     retest.onclick = () => pending(retest, async () => {
-      if (!requireGateway()) return;
-      await request('/api/action', { model: target.model, action: 'test' });
-      feedback(`${target.model}：已开始检测`, true);
+      await request('/api/action', { provider: target.provider, model: target.model, action: 'test' });
+      feedback(`${label}：已开始检测`, true);
       await refresh();
     });
     tools.append(retest);
     const toggle = text('label', '', 'toggle');
     const input = document.createElement('input'); input.type = 'checkbox'; input.checked = target.enabled;
-    input.setAttribute('aria-label', `监测 ${target.model}`);
+    input.setAttribute('aria-label', `监测 ${label}`);
     input.onchange = async () => {
       input.disabled = true;
-      try { await request('/api/target', { model: target.model, enabled: input.checked }); await refresh(); }
+      try { await request('/api/target', { provider: target.provider, model: target.model, enabled: input.checked }); await refresh(); }
       catch (error) { input.checked = target.enabled; feedback(error.message); }
       finally { input.disabled = false; }
     };
     toggle.append(input, text('span', '', 'toggle-track')); tools.append(toggle); actions.append(tools);
     const remove = text('button', '', 'icon-button'); remove.append(icon('Trash2'));
-    remove.setAttribute('aria-label', `删除 ${target.model}`); remove.dataset.tooltip = '删除检测目标'; remove.disabled = modelRunning(target.model);
+    remove.setAttribute('aria-label', `删除 ${label}`); remove.dataset.tooltip = '删除检测目标'; remove.disabled = modelRunning(target.provider, target.model);
     remove.onclick = () => {
-      if (!confirm(`删除 ${target.model}？历史记录和预算计数保留。`)) return;
-      pending(remove, async () => { await request('/api/target/delete', { model: target.model }); feedback('已删除检测目标，历史记录保留', true); await refresh(); });
+      if (!confirm(`删除 ${label}？历史记录和预算计数保留。`)) return;
+      pending(remove, async () => { await request('/api/target/delete', { provider: target.provider, model: target.model }); feedback('已删除检测目标，历史记录保留', true); await refresh(); });
     };
     tools.append(remove);
-    row.append(model, budget, actions);
+    row.append(provider, model, budget, actions);
     return row;
   });
   if (!rows.length) {
-    const row = text('tr', '', 'empty-row'); const cell = text('td', '添加一个检测目标开始测试', 'empty-state'); cell.colSpan = 3; row.append(cell); rows.push(row);
+    const row = text('tr', '', 'empty-row'); const cell = text('td', '从 DSH 模型目录添加一个检测目标开始测试', 'empty-state'); cell.colSpan = 4; row.append(cell); rows.push(row);
   }
   $('#targets').replaceChildren(...rows);
 }
@@ -218,6 +213,15 @@ function renderHistoryView() {
   renderHistory(data);
 }
 $('#compareA').onchange = $('#compareB').onchange = () => renderComparison(data);
+function syncTargetForm() {
+  const form = $('#target');
+  const providers = new Map();
+  for (const entry of data?.catalog || []) providers.set(entry.provider, entry.provider_name || entry.provider);
+  syncSelect(form.elements.provider, [...providers].map(([id, name]) => [id, name === id ? id : `${name} (${id})`]));
+  const provider = form.elements.provider.value;
+  syncSelect(form.elements.model, (data?.catalog || []).filter(entry => entry.provider === provider).map(entry => [entry.model, entry.name && entry.name !== entry.model ? `${entry.name} — ${entry.model}` : entry.model]));
+}
+$('#target').elements.provider.onchange = syncTargetForm;
 async function refresh() {
   if (polling || stopped) return;
   polling = true;
@@ -225,19 +229,20 @@ async function refresh() {
     data = await request('/api/state');
     if (pollError && $('#message').textContent === pollError) feedback('');
     pollError = '';
-    $('#health').textContent = data.health ? '服务异常' : data.gateway_configured ? '网关已配置' : '等待连接';
-    $('#health').className = 'service-state ' + (data.health ? 'warning' : data.gateway_configured ? 'connected' : '');
+    $('#health').textContent = data.health ? '服务异常' : '宿主目录已连接';
+    $('#health').className = 'service-state ' + (data.health ? 'warning' : 'connected');
     $('#health').title = data.health || '';
-    $('#connectionNotice').hidden = data.gateway_configured;
-    $('#keyState').textContent = data.gateway_configured ? 'Key 已保存；留空保留已保存的 Key。' : '尚未保存 Key；本机默认 Key 为 magpie。';
-    if (!configDirty) for (const key of ['gateway_url', 'daily_limit']) config.elements[key].value = data.state.config[key];
-    const targets = Object.values(data.state.targets);
+    if (!configDirty) config.elements.daily_limit.value = data.state.config.daily_limit;
+    const targets = data.state.targets;
     $('#targetCount').textContent = targets.length;
     $('#statEnabled').textContent = targets.filter(t => t.enabled).length;
     $('#statRequests').textContent = dayCount();
-    syncSelect($('#model'), targets.map(t => [t.model, t.model + (t.enabled ? '' : '（监测关闭）')]));
+    syncSelect($('#model'), targets.map(t => [identity(t.provider, t.model), modelLabel(t.provider, t.model) + (t.enabled ? '' : '（监测关闭）')]));
     syncSelect($('#prompt'), data.prompts.map(p => [p.id, p.name]));
-    syncSelect($('#historyModel'), [['', '全部模型'], ...[...new Set([...targets.map(t => t.model), ...data.state.results.map(r => r.model)])].map(m => [m, m])]);
+    const reported = new Map();
+    for (const item of [...targets, ...data.state.results]) reported.set(identity(item.provider, item.model), modelLabel(item.provider, item.model));
+    syncSelect($('#historyModel'), [['', '全部模型'], ...reported]);
+    syncTargetForm();
     showPrompt(); renderTargets(); renderControls(); renderHistoryView();
     $('#lastSync').textContent = '更新于 ' + dateTime(new Date().toISOString());
   } catch (error) {
@@ -279,71 +284,50 @@ $('#clearHistory').onclick = () => pending($('#clearHistory'), async () => {
 });
 $('#loadHistory').onclick = () => { loadMoreHistory(); renderHistoryView(); };
 $('#run').onclick = () => pending($('#run'), async () => {
-  if (!requireGateway()) return;
-  const model = $('#model').value, prompt = $('#prompt').value;
-  testErrors.delete(JSON.stringify([model, prompt]));
-  awaitingTest = { model, prompt, ids: new Set(data.state.results.map(r => r.id)) };
+  const target = selectedTarget(), prompt = $('#prompt').value;
+  if (!target) { feedback('请先从 DSH 模型目录添加检测目标'); return; }
+  testErrors.delete(JSON.stringify([target.provider, target.model, prompt]));
+  awaitingTest = { provider: target.provider, model: target.model, prompt, ids: new Set(data.state.results.map(r => r.id)) };
   $('#testRecord').value = ''; renderTestAnswer();
   try {
-    await request('/api/action', { model, action: 'test', prompt });
+    await request('/api/action', { provider: target.provider, model: target.model, action: 'test', prompt });
     feedback('已开始检测', true); await refresh();
   } catch (error) {
     awaitingTest = undefined;
-    testErrors.set(JSON.stringify([model, prompt]), error.message);
+    testErrors.set(JSON.stringify([target.provider, target.model, prompt]), error.message);
     renderTestAnswer();
     throw error;
   }
 });
 $('#cancelTest').onclick = () => pending($('#cancelTest'), async () => {
-  await request('/api/action', { model: $('#model').value, action: 'cancel-test' });
+  const target = selectedTarget();
+  if (!target) return;
+  await request('/api/action', { provider: target.provider, model: target.model, action: 'cancel-test' });
   await refresh();
 });
 $('#traceRun').onclick = () => pending($('#traceRun'), async () => {
-  if (!requireGateway()) return;
-  await runModelTrace(request); feedback('已开始三条指纹挑战', true); await refresh();
-});
-$('#loadModels').onclick = () => pending($('#loadModels'), async () => {
-  if (!requireGateway()) return;
-  const models = await request('/api/models');
-  $('#catalog').replaceChildren(...models.map(m => { const option = text('option', m.group); option.value = m.id; return option; }));
-  feedback(`已读取 ${models.length} 个模型`, true);
+  await runModelTrace(request, data); feedback('已开始三条指纹挑战', true); await refresh();
 });
 $('#target').onsubmit = event => {
   event.preventDefault();
   const form = event.target;
   pending(form.querySelector('button:last-child'), async () => {
-    await request('/api/target', { model: form.elements.model.value.trim(), enabled: true });
-    form.reset(); feedback('已添加检测目标', true); await refresh();
+    const provider = form.elements.provider.value, model = form.elements.model.value;
+    if (!provider || !model) { feedback('请选择模型提供方和模型'); return; }
+    await request('/api/target', { provider, model, enabled: false });
+    feedback('已添加检测目标，自动监测保持关闭', true); await refresh();
   });
 };
-async function saveConfig() {
-  const values = Object.fromEntries(new FormData(config)); values.daily_limit = Number(values.daily_limit);
-  await request('/api/config', values);
-  config.elements.gateway_key.value = ''; config.elements.gateway_key.type = secretType;
-  $('#showKey').replaceChildren(icon('Eye'));
-  $('#showKey').setAttribute('aria-label', '显示输入的 Key');
-  $('#showKey').dataset.tooltip = '显示输入的 Key';
-  configDirty = false; await refresh();
-}
-async function checkConnection() {
-  const result = await request('/api/connection/check', {});
-  $('#configMessage').textContent = `连接成功：${result.model_count} 个模型`;
-  $('#configMessage').className = 'inline-state success';
-}
 config.onsubmit = event => {
   event.preventDefault();
   pending(config.querySelector('button.primary'), async () => {
-    await saveConfig();
-    $('#configMessage').textContent = '设置已保存，正在验证连接…';
-    await checkConnection();
+    const values = Object.fromEntries(new FormData(config));
+    await request('/api/config', { daily_limit: Number(values.daily_limit) });
+    configDirty = false; await refresh();
+    $('#configMessage').textContent = '预算已保存';
+    $('#configMessage').className = 'inline-state success';
   }, $('#configMessage'));
 };
-$('#checkConnection').onclick = () => pending($('#checkConnection'), async () => {
-  if (configDirty || !data?.gateway_configured) {
-    $('#configMessage').textContent = '请先保存当前连接设置。'; return;
-  }
-  await checkConnection();
-}, $('#configMessage'));
 $('#closeRemote').onclick = () => pending($('#closeRemote'), async () => {
   await request('/api/console/close', {}); stopped = true;
   feedback('远程访问已结束，请从插件重新打开。');

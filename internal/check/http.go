@@ -80,10 +80,20 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 	})
 	mux.HandleFunc("GET /api/state", func(w http.ResponseWriter, r *http.Request) {
 		state, health := s.Snapshot()
-		s.mu.Lock()
-		gatewayConfigured := s.state.Config.GatewayURL != "" && s.state.Config.GatewayKey != ""
-		s.mu.Unlock()
-		writeJSON(w, map[string]any{"state": state, "health": health, "gateway_configured": gatewayConfigured, "prompts": Prompts, "guidance": Guidance})
+		writeJSON(w, map[string]any{"state": state, "health": health, "catalog": s.Catalog(), "prompts": Prompts, "guidance": Guidance})
+	})
+	mux.HandleFunc("POST /api/catalog", func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Models []Model `json:"models"`
+		}
+		if !decode(w, r, &input) {
+			return
+		}
+		if err := s.SetCatalog(input.Models); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("GET /api/results/{id}/download", func(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
@@ -133,25 +143,18 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 		writeJSON(w, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("POST /api/target/delete", func(w http.ResponseWriter, r *http.Request) {
-		var input struct {
-			Model string `json:"model"`
-		}
+		var input TargetID
 		if !decode(w, r, &input) {
 			return
 		}
-		if err := s.DeleteTarget(input.Model); err != nil {
+		if err := s.DeleteTarget(input); err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
 		writeJSON(w, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("GET /api/models", func(w http.ResponseWriter, r *http.Request) {
-		models, err := s.transport.Models(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), 502)
-			return
-		}
-		writeJSON(w, models)
+		writeJSON(w, s.Catalog())
 	})
 	mux.HandleFunc("POST /api/config", func(w http.ResponseWriter, r *http.Request) {
 		var c Config
@@ -164,58 +167,42 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 		}
 		writeJSON(w, map[string]bool{"ok": true})
 	})
-	mux.HandleFunc("POST /api/config/initial", func(w http.ResponseWriter, r *http.Request) {
-		var c Config
-		if !decode(w, r, &c) {
-			return
-		}
-		if err := s.ConfigureInitial(c); err != nil {
-			http.Error(w, err.Error(), 400)
-			return
-		}
-		writeJSON(w, map[string]bool{"ok": true})
-	})
-	mux.HandleFunc("POST /api/connection/check", func(w http.ResponseWriter, r *http.Request) {
-		s.mu.Lock()
-		cfg := s.state.Config
-		s.mu.Unlock()
-		if cfg.GatewayURL == "" || cfg.GatewayKey == "" {
-			http.Error(w, "请先保存 Magpie 网关 URL 和 Key", 400)
-			return
-		}
-		models, err := s.transport.Models(r.Context())
-		if err != nil {
-			http.Error(w, err.Error(), 502)
-			return
-		}
-		writeJSON(w, map[string]any{"ok": true, "model_count": len(models)})
-	})
 	mux.HandleFunc("POST /api/target", func(w http.ResponseWriter, r *http.Request) {
-		var t Target
-		if !decode(w, r, &t) {
+		var input struct {
+			Provider string `json:"provider"`
+			Model    string `json:"model"`
+			Enabled  bool   `json:"enabled"`
+		}
+		if !decode(w, r, &input) {
 			return
 		}
-		if err := s.SetTarget(t.Model, t.Enabled); err != nil {
+		if err := s.SetTarget(TargetID{Provider: input.Provider, Model: input.Model}, input.Enabled); err != nil {
 			http.Error(w, err.Error(), 400)
 			return
 		}
 		writeJSON(w, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("POST /api/action", func(w http.ResponseWriter, r *http.Request) {
-		var a struct{ Model, Action, Prompt string }
+		var a struct {
+			Provider string `json:"provider"`
+			Model    string `json:"model"`
+			Action   string `json:"action"`
+			Prompt   string `json:"prompt"`
+		}
 		if !decode(w, r, &a) {
 			return
 		}
+		id := TargetID{Provider: a.Provider, Model: a.Model}
 		var err error
 		if a.Action == "cancel-test" {
-			err = s.CancelTest(a.Model)
+			err = s.CancelTest(id)
 		} else if a.Action == "modeltrace" {
-			err = s.TriggerModelTrace(a.Model)
+			err = s.TriggerModelTrace(id)
 		} else if a.Action == "test" {
 			if a.Prompt == "" {
 				a.Prompt = "milk"
 			}
-			err = s.Trigger(a.Model, a.Prompt)
+			err = s.Trigger(id, a.Prompt)
 		} else {
 			err = errors.New("未知操作")
 		}
@@ -260,8 +247,8 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 			http.Error(w, "请使用插件生成的完整管理链接", 401)
 			return
 		}
-		if r.URL.Path == "/api/config/initial" && !control {
-			http.Error(w, "仅插件可初始化连接", 403)
+		if r.URL.Path == "/api/catalog" && !control {
+			http.Error(w, "仅插件可同步宿主模型目录", 403)
 			return
 		}
 		if strings.HasPrefix(r.URL.Path, "/api/console") && !control {

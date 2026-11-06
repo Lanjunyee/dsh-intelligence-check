@@ -17,14 +17,13 @@
     <div class="header-tools">
       <span id="health" class="service-state" role="status">连接中</span>
       <button id="theme" class="icon-button" aria-label="切换为亮色" data-tooltip="切换为亮色" data-icon="Sun"></button>
-      <button id="settings" class="icon-button" aria-label="连接与预算设置" data-tooltip="连接与预算" data-icon="Settings2"></button>
+      <button id="settings" class="icon-button" aria-label="检测预算设置" data-tooltip="检测预算" data-icon="Settings2"></button>
       <button id="closeRemote" class="icon-button" aria-label="结束远程访问" data-tooltip="结束远程访问" data-icon="Power"></button>
     </div>
   </div>
 </header>
 <main id="main" tabindex="-1">
   <div id="message" class="feedback" role="alert"></div>
-  <div id="connectionNotice" class="connection-notice" hidden><span>尚未配置模型网关</span><button id="connectSettings" class="text-button">连接设置 <i data-icon="ArrowUpRight"></i></button></div>
   <section class="overview" aria-label="检测概览">
     <div class="stat"><span>监测目标</span><strong id="statEnabled">0</strong></div>
     <div class="stat"><span>今日请求</span><strong id="statRequests">0</strong></div>
@@ -36,14 +35,14 @@
     <button id="tab-history" role="tab" aria-selected="false" aria-controls="view-history" tabindex="-1" data-view="history"><i data-icon="History"></i>检测记录</button>
   </nav>
   <section id="view-models" class="view" role="tabpanel" aria-labelledby="tab-models">
-    <div class="section-heading"><h2>检测目标</h2><span class="meta">检测为主动测试，不拦截业务请求</span></div>
+    <div class="section-heading"><h2>检测目标</h2><span class="meta">模型目录来自 DSH 宿主；检测不拦截业务请求</span></div>
     <form id="target" class="add-target">
-      <label class="grow"><span class="sr-only">完整模型 ID</span><input name="model" list="catalog" aria-label="完整模型 ID" placeholder="provider/model" required autocomplete="off"><datalist id="catalog"></datalist></label>
-      <button type="button" id="loadModels" class="secondary"><i data-icon="RefreshCw"></i><span>刷新模型</span></button>
+      <label class="grow">提供方<select name="provider" aria-label="模型提供方" required></select></label>
+      <label class="grow">模型<select name="model" aria-label="模型" required></select></label>
       <button class="primary"><i data-icon="Plus"></i><span>添加检测目标</span></button>
     </form>
     <div class="table-wrap">
-      <table class="targets-table"><thead><tr><th>模型</th><th>今日预算</th><th class="align-right">操作</th></tr></thead><tbody id="targets"></tbody></table>
+      <table class="targets-table"><thead><tr><th>提供方</th><th>模型</th><th>今日预算</th><th class="align-right">操作</th></tr></thead><tbody id="targets"></tbody></table>
     </div>
   </section>
   <section id="view-tests" class="view" role="tabpanel" aria-labelledby="tab-tests" hidden>
@@ -99,15 +98,13 @@
   <footer class="footer"><span>dsh-intelligence-check</span><span id="lastSync">等待连接</span></footer>
 </main>
 <dialog id="settingsDialog" aria-labelledby="settingsTitle">
-  <div class="dialog-heading"><h2 id="settingsTitle">连接与预算</h2><button id="closeSettings" class="icon-button" data-icon="X" aria-label="关闭设置" data-tooltip="关闭设置"></button></div>
+  <div class="dialog-heading"><h2 id="settingsTitle">检测预算</h2><button id="closeSettings" class="icon-button" data-icon="X" aria-label="关闭设置" data-tooltip="关闭设置"></button></div>
   <form id="config">
     <div class="fields">
-      <label>Magpie 网关 URL<input name="gateway_url" type="url" placeholder="http://127.0.0.1:3425" required autocomplete="off"></label>
-      <label>网关 Key<span class="secret-field"><input name="gateway_key" autocomplete="off" placeholder="本机默认：magpie"><button type="button" id="showKey" class="icon-button" data-icon="Eye" aria-label="显示输入的 Key" data-tooltip="显示输入的 Key"></button></span></label>
-      <p id="keyState" class="field-note"></p>
       <label>每日每模型请求上限<input name="daily_limit" type="number" min="1" max="10000" value="120" required></label>
+      <p class="field-note">模型目录与凭据由 DSH 宿主提供，控制台不保存网关地址或模型 API Key。</p>
     </div>
-    <div class="dialog-actions"><button type="button" id="checkConnection" class="secondary"><i data-icon="Activity"></i>验证连接</button><button class="primary"><i data-icon="Check"></i>保存设置</button></div>
+    <div class="dialog-actions"><span class="meta">预算约束自动与手动检测的请求次数。</span><button class="primary"><i data-icon="Check"></i>保存设置</button></div>
     <p id="configMessage" class="inline-state" role="status"></p>
   </form>
 </dialog>

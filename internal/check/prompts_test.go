@@ -1,12 +1,8 @@
 package check
 
 import (
-	"context"
 	"crypto/sha256"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 )
 
@@ -33,22 +29,19 @@ func TestUserPromptIntegrity(t *testing.T) {
 func TestPromptSentWithoutRewriting(t *testing.T) {
 	for _, p := range Prompts {
 		t.Run(p.ID, func(t *testing.T) {
-			up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				var body struct {
-					Messages []struct{ Role, Content string }
-				}
-				if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-					t.Error(err)
-				}
-				if len(body.Messages) != 1 || body.Messages[0].Role != "user" || body.Messages[0].Content != p.Text {
-					t.Error("请求正文不是原始提示词")
-				}
-				w.Header().Set("Content-Type", "application/json")
-				fmt.Fprint(w, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`)
-			}))
-			defer up.Close()
-			if _, _, err := Call(context.Background(), Config{GatewayURL: up.URL, GatewayKey: "test"}, "a/model", p.Text); err != nil {
+			transport := &fakeTransport{}
+			s := fixtureWithTransport(t, transport)
+			id := TargetID{Provider: "provider-a", Model: "model"}
+			if err := s.SetTarget(id, false); err != nil {
 				t.Fatal(err)
+			}
+			if err := s.Trigger(id, p.ID); err != nil {
+				t.Fatal(err)
+			}
+			waitIdle(t, s)
+			calls, prompts := transport.snapshot()
+			if len(calls) != 1 || calls[0] != id || prompts[0] != p.Text {
+				t.Fatal("请求正文不是原始提示词")
 			}
 		})
 	}

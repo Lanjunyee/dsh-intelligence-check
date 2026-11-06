@@ -1,8 +1,6 @@
 package check
 
 import (
-	"context"
-	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -25,11 +23,12 @@ func TestTargetAndRecordPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetTarget("a/solo", true); err != nil {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	if err := s.SetTarget(id, true); err != nil {
 		t.Fatal(err)
 	}
 	s.mu.Lock()
-	s.state.Results = append(s.state.Results, Result{ID: "one", Model: "a/solo", Answer: "answer", Time: time.Now()})
+	s.state.Results = append(s.state.Results, Result{ID: "one", Provider: id.Provider, Model: id.Model, Answer: "answer", Time: time.Now()})
 	err = s.saveLocked()
 	s.mu.Unlock()
 	if err != nil {
@@ -42,8 +41,11 @@ func TestTargetAndRecordPersistence(t *testing.T) {
 	}
 	defer restored.Close()
 	state, _ := restored.Snapshot()
-	if len(state.Targets) != 1 || !state.Targets["a/solo"].Enabled || len(state.Results) != 1 || state.Results[0].Answer != "answer" {
+	if len(state.Targets) != 1 || !state.Targets[0].Enabled || len(state.Results) != 1 || state.Results[0].Answer != "answer" {
 		t.Fatal("target or record lost across restart")
+	}
+	if state.Targets[0].Provider != "provider-a" || state.Results[0].Provider != "provider-a" {
+		t.Fatal("provider identity lost")
 	}
 	if _, health := restored.Snapshot(); health != "" {
 		t.Fatal(health)
@@ -57,20 +59,7 @@ func TestGrade(t *testing.T) {
 		}
 	}
 }
-func TestClient(t *testing.T) {
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer secret" {
-			t.Error("auth missing")
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"choices":[{"message":{"content":"46.24 inches"},"finish_reason":"stop"}],"usage":{"total_tokens":4}}`))
-	}))
-	defer up.Close()
-	a, n, e := Call(context.Background(), Config{GatewayURL: up.URL, GatewayKey: "secret"}, "a/solo", "test")
-	if e != nil || n != 4 || a != "46.24 inches" {
-		t.Fatal(a, n, e)
-	}
-}
+
 func TestHTTPAuthentication(t *testing.T) {
 	s := fixture(t)
 	h := s.Handler("secret")

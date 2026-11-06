@@ -13,10 +13,20 @@ const local = path.join(root, 'bin', `quality-check${suffix}`);
 const binaryPath = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY ||
   (existsSync(local) ? local : path.join(root, 'bin', `quality-check-${platform}-${arch}${suffix}`));
 
-function profile() {
-  const dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-plugin-'));
+const catalog = {
+  'provider-one': [{provider: 'provider-one', id: 'shared-model', name: 'Shared Model'}],
+  'provider-two': [{provider: 'provider-two', id: 'shared-model', name: 'Shared Model'}],
+};
+
+function profile(dir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-plugin-'))) {
   const disposers = [];
   const commands = [];
+  const listeners = {};
+  const providers = [
+    {id: 'provider-one', name: 'Provider One'},
+    {id: 'provider-two', name: 'Provider Two'},
+  ];
+  const models = {...catalog};
   const ctx = {
     profileContext: {name: path.basename(dir), dir},
     effect(fn) {
@@ -30,11 +40,26 @@ function profile() {
         return () => {};
       },
     },
+    llm: {
+      listProviders: () => [...providers],
+      listModels: async provider => (models[provider] || []).map(model => ({...model})),
+    },
+    on(event, handler) {
+      listeners[event] = handler;
+      return () => {};
+    },
     get() {},
     inject() {},
-    async dispose() {
+    async emit(event) {
+      await listeners[event]?.();
+    },
+    addProvider(provider, entries) {
+      providers.push(provider);
+      models[provider.id] = entries;
+    },
+    async dispose({remove = true} = {}) {
       while (disposers.length > 0) await disposers.pop()();
-      rmSync(dir, {recursive: true, force: true});
+      if (remove) rmSync(dir, {recursive: true, force: true});
     },
   };
   return {
@@ -67,7 +92,20 @@ async function stateOf(console) {
   return (await (await console('/api/state')).json()).state;
 }
 
-test('profile load starts the backend and the host command issues an authorized console link', async () => {
+async function addTarget(console, provider, model, enabled = false) {
+  const response = await console('/api/target', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({provider, model, enabled}),
+  });
+  assert.equal(response.status, 200, await response.text());
+}
+
+function targets(state) {
+  return state.targets.map(target => `${target.provider}|${target.model}|${target.enabled}`).sort();
+}
+
+test('profile load pushes the host catalog and the command issues an authorized console link', async () => {
   const p = profile();
   try {
     await apply(p.ctx, {binaryPath});
@@ -78,30 +116,83 @@ test('profile load starts the backend and the host command issues an authorized 
     assert.equal(result.kind, 'success');
     assert.match(result.text, /http:\/\/127\.0\.0\.1:\d+\/open\/[0-9a-f]{48}/);
     const console = await openConsole(result.text.match(/http:\/\/\S+/)[0]);
-    const state = await stateOf(console);
-    assert.deepEqual(state.targets, {});
-    assert.deepEqual(state.results, []);
-    assert.equal(state.config.daily_limit, 120);
+    const response = await (await console('/api/state')).json();
+    assert.deepEqual(response.state.targets, []);
+    assert.deepEqual(response.state.results, []);
+    assert.equal(response.state.config.daily_limit, 120);
+    assert.deepEqual(response.catalog.map(entry => `${entry.provider}|${entry.model}`).sort(),
+      ['provider-one|shared-model', 'provider-two|shared-model']);
   } finally {
     await p.ctx.dispose();
   }
 });
 
-test('two sessions in one profile share the same backend, configuration and records', async () => {
+test('same model at two providers is saved independently and adding does not monitor', async () => {
+  const p = profile();
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    await addTarget(console, 'provider-one', 'shared-model');
+    await addTarget(console, 'provider-two', 'shared-model');
+    assert.deepEqual(targets(await stateOf(console)), [
+      'provider-one|shared-model|false',
+      'provider-two|shared-model|false',
+    ]);
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
+test('host catalog updates are re-read after adapters register', async () => {
+  const p = profile();
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    p.ctx.addProvider(
+      {id: 'provider-three', name: 'Provider Three'},
+      [{provider: 'provider-three', id: 'late-model', name: 'Late Model'}],
+    );
+    await p.ctx.emit('llm/adapters-updated');
+    const response = await (await console('/api/state')).json();
+    assert.ok(response.catalog.some(entry => entry.provider === 'provider-three' && entry.model === 'late-model'));
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
+test('two sessions in one profile share the same backend and composite targets', async () => {
   const p = profile();
   try {
     await apply(p.ctx, {binaryPath});
     const first = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
-    const saved = await first('/api/target', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({model: 'shared-model', enabled: false}),
-    });
-    assert.equal(saved.status, 200);
+    await addTarget(first, 'provider-one', 'shared-model');
     const second = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
-    assert.equal((await stateOf(second)).targets['shared-model'].model, 'shared-model');
+    assert.deepEqual(targets(await stateOf(second)), ['provider-one|shared-model|false']);
   } finally {
     await p.ctx.dispose();
+  }
+});
+
+test('composite targets survive a plugin restart in the same profile', async () => {
+  const first = profile();
+  const dir = first.dir;
+  try {
+    await apply(first.ctx, {binaryPath});
+    const console = await openConsole((await first.run()).text.match(/http:\/\/\S+/)[0]);
+    await addTarget(console, 'provider-one', 'shared-model');
+    await addTarget(console, 'provider-two', 'shared-model');
+    await first.ctx.dispose({remove: false});
+
+    const second = profile(dir);
+    await apply(second.ctx, {binaryPath});
+    const reopened = await openConsole((await second.run()).text.match(/http:\/\/\S+/)[0]);
+    assert.deepEqual(targets(await stateOf(reopened)), [
+      'provider-one|shared-model|false',
+      'provider-two|shared-model|false',
+    ]);
+    await second.ctx.dispose();
+  } finally {
+    rmSync(dir, {recursive: true, force: true});
   }
 });
 
@@ -112,13 +203,9 @@ test('different profiles keep independent backends, configuration and records', 
     await apply(a.ctx, {binaryPath});
     await apply(b.ctx, {binaryPath});
     const consoleA = await openConsole((await a.run()).text.match(/http:\/\/\S+/)[0]);
-    await consoleA('/api/target', {
-      method: 'POST',
-      headers: {'content-type': 'application/json'},
-      body: JSON.stringify({model: 'profile-a-model', enabled: false}),
-    });
+    await addTarget(consoleA, 'provider-one', 'profile-a-model');
     const consoleB = await openConsole((await b.run()).text.match(/http:\/\/\S+/)[0]);
-    assert.deepEqual((await stateOf(consoleB)).targets, {});
+    assert.deepEqual((await stateOf(consoleB)).targets, []);
     assert.notEqual(new URL((await a.run()).text.match(/http:\/\/\S+/)[0]).origin,
       new URL((await b.run()).text.match(/http:\/\/\S+/)[0]).origin);
   } finally {
@@ -133,7 +220,7 @@ test('disposing the plugin releases the listener and the backend process', async
   const url = (await p.run()).text.match(/http:\/\/\S+/)[0];
   const origin = new URL(url).origin;
   const console = await openConsole(url);
-  assert.deepEqual((await stateOf(console)).targets, {});
+  assert.deepEqual((await stateOf(console)).targets, []);
   await p.ctx.dispose();
   await assert.rejects(fetch(origin + '/health'));
 });

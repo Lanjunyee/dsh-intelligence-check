@@ -15,7 +15,7 @@ try{
  await waitForConsole(url);
  let session;const deadline=Date.now()+120000;while(Date.now()<deadline){try{const r=await fetch(url,{redirect:'manual'});if(r.status===303){session=r.headers.get('set-cookie')?.split(';')[0];break}}catch{}await new Promise(r=>setTimeout(r,3000))}
  assert.ok(session,'temporary HTTPS domain never became reachable');const origin=new URL(url).origin;
- let state;const stableUntil=Date.now()+90000;while(Date.now()<stableUntil){try{state=await fetch(origin+'/api/state',{headers:{cookie:session},signal:AbortSignal.timeout(10000)});if(state.status===200)break}catch{}await new Promise(r=>setTimeout(r,3000))}assert.equal(state?.status,200);assert.equal((await state.json()).state.config.gateway_key,'');
+ let state;const stableUntil=Date.now()+90000;while(Date.now()<stableUntil){try{state=await fetch(origin+'/api/state',{headers:{cookie:session},signal:AbortSignal.timeout(10000)});if(state.status===200)break}catch{}await new Promise(r=>setTimeout(r,3000))}assert.equal(state?.status,200);assert.equal(Object.hasOwn((await state.json()).state.config,'gateway_key'),false);
  for(const asset of ['/assets/app.js','/assets/app.css','/assets/fonts/space-mono-regular.ttf','/modeltrace/unified_bank.json']){
   const response=await fetch(origin+asset,{headers:{cookie:session},signal:AbortSignal.timeout(10000)});
   assert.equal(response.status,200,asset);assert.ok((await response.arrayBuffer()).byteLength>0,asset);

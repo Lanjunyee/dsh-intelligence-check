@@ -1,38 +1,25 @@
 package check
 
 import (
-	"encoding/json"
-	"fmt"
-	"net/http"
+	"context"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 )
 
 func TestModelTraceBatchBudgetAndTargetIsolation(t *testing.T) {
-	s := fixture(t)
-	var calls atomic.Int32
-	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		var body struct {
-			Model    string
-			Messages []struct{ Content string }
-		}
-		json.NewDecoder(r.Body).Decode(&body)
-		if body.Model != "a/solo" || len(body.Messages) != 1 || !strings.Contains(body.Messages[0].Content, "1 到 355") {
-			t.Error("independent probe payload invalid")
-		}
-		fmt.Fprint(w, `{"choices":[{"message":{"content":"1,2,3"},"finish_reason":"stop"}],"usage":{"total_tokens":12}}`)
-	}))
-	defer up.Close()
-	s.Configure(Config{GatewayURL: up.URL, GatewayKey: "fixture", DailyLimit: 3})
-	s.SetTarget("a/solo", true)
-	if err := s.TriggerModelTrace("a/solo"); err != nil {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string)) (string, int, error) {
+		return "1,2,3", 12, nil
+	}}
+	s := fixtureWithTransport(t, transport)
+	s.Configure(Config{DailyLimit: 3})
+	s.SetTarget(id, true)
+	if err := s.TriggerModelTrace(id); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.TriggerModelTrace("a/solo"); err == nil {
+	if err := s.TriggerModelTrace(id); err == nil {
 		t.Fatal("concurrent probe accepted")
 	}
 	deadline := time.Now().Add(5 * time.Second)
@@ -47,7 +34,8 @@ func TestModelTraceBatchBudgetAndTargetIsolation(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	state, _ := s.Snapshot()
-	if calls.Load() != 3 || !state.Targets["a/solo"].Enabled {
+	calls, prompts := transport.snapshot()
+	if len(calls) != 3 || !state.Targets[0].Enabled {
 		t.Fatal("wrong call count or monitoring changed")
 	}
 	seen := map[int]bool{}
@@ -55,15 +43,23 @@ func TestModelTraceBatchBudgetAndTargetIsolation(t *testing.T) {
 		if result.Batch != state.Results[0].Batch || result.Tokens != 12 || result.PromptText == "" || seen[result.ExpectedCount] {
 			t.Fatal("batch metadata missing or challenge counts reused")
 		}
+		if result.Provider != id.Provider || result.Model != id.Model {
+			t.Fatal("ModelTrace record lost composite identity")
+		}
 		if result.ExpectedCount < 292 || result.ExpectedCount > 332 {
 			t.Fatal("invalid challenge length")
 		}
 		seen[result.ExpectedCount] = true
 	}
-	if err := s.TriggerModelTrace("a/solo"); err == nil {
-		t.Fatal("budget exceeded")
+	for _, prompt := range prompts {
+		if !strings.Contains(prompt, "1 到 355") {
+			t.Fatal("independent probe payload invalid")
+		}
 	}
-	if calls.Load() != 3 {
+	if err := s.TriggerModelTrace(id); err == nil || !strings.Contains(err.Error(), "预算") {
+		t.Fatal("budget exceeded", err)
+	}
+	if len(calls) != 3 {
 		t.Fatal("over-budget request sent")
 	}
 }

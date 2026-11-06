@@ -1,13 +1,13 @@
 import { analyzeGlobalOutputs } from './fingerprint-core.js';
-import { $, text, syncSelect, dateTime } from '../assets/ui.js';
+import { $, text, syncSelect, dateTime, identity, modelLabel } from '../assets/ui.js';
 
 let bank, bankLoading, latestData, rendered;
 const percent = value => `${(value * 100).toFixed(1)}%`;
 
-export async function runModelTrace(request) {
-  const model = $('#traceModel').value;
-  if (!model) throw Error('请先添加监测模型。');
-  await request('/api/action', { model, action: 'modeltrace' });
+export async function runModelTrace(request, data) {
+  const target = data?.state.targets.find(item => identity(item.provider, item.model) === $('#traceModel').value);
+  if (!target) throw Error('请先添加检测目标。');
+  await request('/api/action', { provider: target.provider, model: target.model, action: 'modeltrace' });
 }
 $('#traceModel').onchange = $('#traceBatch').onchange = () => renderModelTrace(latestData);
 
@@ -15,13 +15,15 @@ export function renderModelTrace(data) {
   if (!data) return;
   latestData = data;
   const select = $('#traceModel');
-  syncSelect(select, Object.values(data.state.targets).map(t => [t.model, t.model + (t.enabled ? '' : '（监测关闭）')]));
-  const records = data.state.results.filter(r => r.prompt === 'modeltrace' && r.model === select.value);
+  const targets = data.state.targets;
+  syncSelect(select, targets.map(t => [identity(t.provider, t.model), modelLabel(t.provider, t.model) + (t.enabled ? '' : '（监测关闭）')]));
+  const target = targets.find(t => identity(t.provider, t.model) === select.value);
+  const records = target ? data.state.results.filter(r => r.prompt === 'modeltrace' && r.provider === target.provider && r.model === target.model) : [];
   const batches = [...new Set(records.map(r => r.batch))].reverse();
   syncSelect($('#traceBatch'), [['', '最新批次'], ...batches.map(batch => [batch, dateTime(records.find(r => r.batch === batch).time)])]);
   const batch = $('#traceBatch').value || batches[0];
   const results = records.filter(r => r.batch === batch);
-  $('#traceRun').disabled = $('#traceRun').hasAttribute('aria-busy') || !select.value || data.state.results.some(r => r.model === select.value && r.verdict === 'running');
+  $('#traceRun').disabled = $('#traceRun').hasAttribute('aria-busy') || !target || data.state.results.some(r => r.provider === target.provider && r.model === target.model && r.verdict === 'running');
   const signature = JSON.stringify([select.value, results, Boolean(bank)]);
   if (signature === rendered) return;
   rendered = signature;

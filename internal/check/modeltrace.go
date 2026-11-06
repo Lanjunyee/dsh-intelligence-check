@@ -43,32 +43,25 @@ func traceChallenges() []Result {
 	return out
 }
 
-func (s *Service) TriggerModelTrace(model string) error {
+func (s *Service) TriggerModelTrace(id TargetID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	t := s.state.Targets[model]
-	if t == nil {
+	if s.targetLocked(id) == nil {
 		return errors.New("模型未配置")
 	}
-	if s.running[model] {
+	if s.running[id] {
 		return errors.New("该模型已有检测进行中，请完成后重试")
 	}
 	cfg := s.state.Config
-	count := 0
 	day := time.Now().UTC().Format("2006-01-02")
-	count += s.state.ClearedUsage[day][model]
-	for _, r := range s.state.Results {
-		if r.Model == model && r.Time.UTC().Format("2006-01-02") == day {
-			count++
-		}
-	}
-	if count+3 > cfg.DailyLimit {
+	if s.dayCountLocked(id, day)+3 > cfg.DailyLimit {
 		return errors.New("ModelTrace 需要 3 次请求，今日剩余预算不足")
 	}
 	probes := traceChallenges()
 	start := len(s.state.Results)
 	for i := range probes {
-		probes[i].Model = model
+		probes[i].Provider = id.Provider
+		probes[i].Model = id.Model
 		probes[i].Time = time.Now()
 	}
 	s.state.Results = append(s.state.Results, probes...)
@@ -76,14 +69,14 @@ func (s *Service) TriggerModelTrace(model string) error {
 		s.state.Results = s.state.Results[:start]
 		return err
 	}
-	s.running[model] = true
+	s.running[id] = true
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		defer func() { s.mu.Lock(); delete(s.running, model); s.mu.Unlock() }()
+		defer func() { s.mu.Lock(); delete(s.running, id); s.mu.Unlock() }()
 		for i, r := range probes {
 			ctx, cancel := context.WithTimeout(s.ctx, 180*time.Second)
-			answer, tokens, err := s.transport.Generate(ctx, model, r.PromptText, nil)
+			answer, tokens, err := s.transport.Generate(ctx, id, r.PromptText, nil)
 			cancel()
 			r.Answer, r.Tokens, r.Verdict = answer, tokens, "manual"
 			if err != nil {

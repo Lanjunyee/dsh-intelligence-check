@@ -3,10 +3,29 @@ import {fileURLToPath} from 'node:url';
 import {createBackend, resolveBinary} from './backend.mjs';
 
 export const name = 'dsh-intelligence-check';
-export const inject = ['commands'];
+export const inject = ['commands', 'llm'];
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const linkText = url => `质量检测控制台：${url}\n复制链接后在浏览器打开。链接十分钟内有效且只能使用一次。`;
+
+async function readCatalog(llm) {
+  const providers = llm.listProviders();
+  const settled = await Promise.allSettled(providers.map(provider => llm.listModels(provider.id)));
+  const models = [];
+  settled.forEach((result, index) => {
+    if (result.status !== 'fulfilled') return;
+    const provider = providers[index];
+    for (const model of result.value) {
+      models.push({
+        provider: provider.id,
+        provider_name: provider.name,
+        model: model.id,
+        name: model.name,
+      });
+    }
+  });
+  return models;
+}
 
 export async function apply(ctx, config = {}) {
   const profile = ctx.profileContext;
@@ -17,6 +36,13 @@ export async function apply(ctx, config = {}) {
   });
   ctx.effect(() => () => backend.stop());
   await backend.start();
+  const syncCatalog = () => readCatalog(ctx.llm).then(
+    models => backend.setCatalog(models),
+    error => console.error(`[dsh-intelligence-check] 模型目录读取失败：${error.message}`),
+  );
+  ctx.on('llm/adapters-updated', syncCatalog);
+  ctx.on('llm/models-updated', syncCatalog);
+  await syncCatalog();
   console.error(`[dsh-intelligence-check] backend ready, profile=${profile.name}`);
   ctx.commands.register({
     name,

@@ -2,8 +2,6 @@ package check
 
 import (
 	"context"
-	"encoding/json"
-	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -14,41 +12,25 @@ import (
 )
 
 func TestManualMilkThroughWebPersistsAfterRestart(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Model    string
-			Messages []struct{ Content string }
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Error(err)
-		}
-		if body.Model != "a/solo" {
-			t.Errorf("transport model = %q", body.Model)
-		}
-		milk, _ := FindPrompt("milk")
-		if len(body.Messages) != 1 || body.Messages[0].Content != milk.Text {
-			t.Error("检测请求没有原样发送题目")
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"choices":[{"message":{"content":"46.24 inches"},"finish_reason":"stop"}],"usage":{"total_tokens":9}}`))
-	}))
-	defer upstream.Close()
-
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string)) (string, int, error) {
+		return "46.24 inches", 9, nil
+	}}
 	dir := t.TempDir()
-	s, err := New(dir)
+	s, err := NewWithTransport(dir, transport)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Configure(Config{GatewayURL: upstream.URL, GatewayKey: "fixture", DailyLimit: 5}); err != nil {
+	if err := s.Configure(Config{DailyLimit: 5}); err != nil {
 		t.Fatal(err)
 	}
 	// A target does not need to be monitored for a manual check.
-	if err := s.SetTarget("a/solo", false); err != nil {
+	if err := s.SetTarget(id, false); err != nil {
 		t.Fatal(err)
 	}
 	h := s.Handler("secret")
 	request := func(action string) *httptest.ResponseRecorder {
-		body := `{"model":"a/solo","action":"` + action + `","prompt":"milk"}`
+		body := `{"provider":"provider-a","model":"solo","action":"` + action + `","prompt":"milk"}`
 		r := httptest.NewRequest("POST", "/api/action", strings.NewReader(body))
 		r.Header.Set("Authorization", "Bearer secret")
 		w := httptest.NewRecorder()
@@ -63,7 +45,7 @@ func TestManualMilkThroughWebPersistsAfterRestart(t *testing.T) {
 		state, _ := s.Snapshot()
 		if len(state.Results) == 1 && state.Results[0].Verdict != "running" {
 			result := state.Results[0]
-			if result.Verdict != "passed" || result.Answer != "46.24 inches" || result.Tokens != 9 {
+			if result.Verdict != "passed" || result.Answer != "46.24 inches" || result.Tokens != 9 || result.Provider != "provider-a" {
 				t.Fatalf("unexpected record: %+v", result)
 			}
 			break
@@ -109,11 +91,12 @@ func TestMissingOrUnwritableGatePathDoesNotAffectSaving(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if err := s.SetTarget("a/solo", true); err != nil {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	if err := s.SetTarget(id, true); err != nil {
 		t.Fatal(err)
 	}
 	s.mu.Lock()
-	s.state.Results = append(s.state.Results, Result{ID: "kept", Model: "a/solo", Answer: "answer"})
+	s.state.Results = append(s.state.Results, Result{ID: "kept", Provider: id.Provider, Model: id.Model, Answer: "answer"})
 	err = s.saveLocked()
 	s.mu.Unlock()
 	if err != nil {
@@ -129,41 +112,27 @@ func TestMissingOrUnwritableGatePathDoesNotAffectSaving(t *testing.T) {
 	}
 }
 
-type recordingTransport struct {
-	mu      sync.Mutex
-	models  []Model
-	calls   []string
-	updates int
-}
-
-func (r *recordingTransport) Models(context.Context) ([]Model, error) {
-	return r.models, nil
-}
-
-func (r *recordingTransport) Generate(_ context.Context, model, prompt string, progress func(string)) (string, int, error) {
-	r.mu.Lock()
-	r.calls = append(r.calls, model+"|"+prompt)
-	r.mu.Unlock()
-	if progress != nil {
-		progress("part")
-		r.mu.Lock()
-		r.updates++
-		r.mu.Unlock()
-	}
-	return "46.24 inches", 7, nil
-}
-
 func TestTransportSeamCoversChecksAndModelTrace(t *testing.T) {
-	transport := &recordingTransport{models: []Model{{ID: "a/solo", Group: "a"}}}
-	s, err := NewWithTransport(t.TempDir(), transport)
-	if err != nil {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	var mu sync.Mutex
+	updates := 0
+	transport := &fakeTransport{generate: func(_ context.Context, _ TargetID, _ string, progress func(string)) (string, int, error) {
+		if progress != nil {
+			progress("part")
+			mu.Lock()
+			updates++
+			mu.Unlock()
+		}
+		return "46.24 inches", 7, nil
+	}}
+	s := fixtureWithTransport(t, transport)
+	if err := s.SetCatalog([]Model{{Provider: id.Provider, ProviderName: "Provider A", Model: id.Model, Name: "Solo"}}); err != nil {
 		t.Fatal(err)
 	}
-	defer s.Close()
-	if err := s.SetTarget("a/solo", true); err != nil {
+	if err := s.SetTarget(id, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Trigger("a/solo", "milk"); err != nil {
+	if err := s.Trigger(id, "milk"); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, s)
@@ -171,23 +140,24 @@ func TestTransportSeamCoversChecksAndModelTrace(t *testing.T) {
 	if len(state.Results) != 1 || state.Results[0].Verdict != "passed" {
 		t.Fatalf("quality check did not use transport: %+v", state.Results)
 	}
-	if err := s.TriggerModelTrace("a/solo"); err != nil {
+	if err := s.TriggerModelTrace(id); err != nil {
 		t.Fatal(err)
 	}
 	waitIdle(t, s)
-	transport.mu.Lock()
-	calls, updates := append([]string(nil), transport.calls...), transport.updates
-	transport.mu.Unlock()
-	if len(calls) != 4 || updates != 1 {
-		t.Fatalf("calls=%v updates=%d", calls, updates)
+	calls, prompts := transport.snapshot()
+	mu.Lock()
+	progressUpdates := updates
+	mu.Unlock()
+	if len(calls) != 4 || progressUpdates != 1 {
+		t.Fatalf("calls=%v updates=%d", calls, progressUpdates)
 	}
 	for _, call := range calls {
-		if !strings.HasPrefix(call, "a/solo|") {
-			t.Fatalf("probe alias leaked to transport: %s", call)
+		if call != id {
+			t.Fatalf("probe alias leaked to transport: %v", call)
 		}
 	}
-	if calls[0] != "a/solo|"+mustPrompt(t, "milk").Text || !strings.Contains(calls[3], "1 到 355") {
-		t.Fatalf("unexpected transport prompts: %v", calls)
+	if prompts[0] != mustPrompt(t, "milk").Text || !strings.Contains(prompts[3], "1 到 355") {
+		t.Fatalf("unexpected transport prompts: %v", prompts)
 	}
 
 	h := s.Handler("secret")
@@ -195,8 +165,8 @@ func TestTransportSeamCoversChecksAndModelTrace(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer secret")
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"id":"a/solo"`) {
-		t.Fatalf("model catalog bypassed transport: %d %s", w.Code, w.Body.String())
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"provider":"provider-a"`) || !strings.Contains(w.Body.String(), `"model":"solo"`) {
+		t.Fatalf("model catalog bypassed host catalog: %d %s", w.Code, w.Body.String())
 	}
 }
 
