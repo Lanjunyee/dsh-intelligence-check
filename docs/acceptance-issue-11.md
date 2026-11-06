@@ -31,6 +31,8 @@
 
 `dist/SHA256SUMS` 五项平台包与五项后台 `shasum -a 256 -c` 全部 `OK`；`dist/manifest.json` 与 checked-in `bin/quality-check-*` 均与最终源码构建一致。
 
+另在独立 `DSH_HOME` 中执行 `dsh plugin --profile probe add dist/dsh-intelligence-check-darwin-arm64.tgz`，确认 profile manifest 将 `dsh-intelligence-check` 加入 bundle，安装目录 `node_modules/dsh-intelligence-check/bin/quality-check` 的 SHA-256 为 `72fa8402962b974cc43d29de12d862f320eaa03e9247c6cd83210bc2e1bd6215`，与上表最终后台二进制一致。该探针 profile 已删除。
+
 ## 3. 真实宿主验收
 
 以下命令均设置 `DSH_PLUGIN_PACKAGE=dist/dsh-intelligence-check-darwin-arm64.tgz` 且不设置 `DSH_INTELLIGENCE_CHECK_TEST_BINARY`，因此由 `dsh plugin --profile <name> add <tarball>` 安装发行包，插件使用包内 `bin/quality-check`，没有 developer 目录或 `binaryPath` 覆盖。每个检查使用独立 `mkdtemp` 的 `DSH_HOME` 与工作目录，结束时删除；模型服务为监听回环地址的受控 OpenAI 兼容服务，经宿主 `llm-pi-ai` 配置注册，不调用付费模型。
@@ -67,6 +69,7 @@
 - **Cloudflare 临时通道未重跑**。它不是 DSH 原生入口的依赖，需要外部网络；本票的 DSH 入口为本机回环和宿主同源路由。`auth-browser-check` 仅验证本机管理链接授权。
 - **未使用真实模型凭据或付费模型**。所有模型调用均由宿主路由到本机受控 OpenAI 兼容服务。
 - **未发布、未推送、未上架市场**；按任务边界仅提交本地分支。
+- 一次 Edge 无头运行在后台重启后的 `page.goto` 出现“browser has been closed”的浏览器进程异常；同一脚本使用缓存 Chromium 153 重跑完整通过，过程中没有产品断言失败。最终记录以上表的 Chromium 运行为准。
 
 ## 6. 隔离与旧数据
 
