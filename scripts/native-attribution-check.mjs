@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {rm} from 'node:fs/promises';
 import {
   createDshHarness, launchChromium, openNativePage, openPageSession, pluginConfigOverride, postJSON, providerPatch,
 } from './dsh-harness.mjs';
@@ -9,7 +10,7 @@ import {
 // controlled host model returning non-numeric answers, observed through the
 // real rendered DOM. Successful attribution and the no-records empty state are
 // checked in the same browser session so the fix cannot trade one for another.
-const {hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
+const {home, work, hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
   prefix: 'dsh-ic-attribution',
   env: {DSH_IC_LOCAL_KEY: process.env.DSH_IC_LOCAL_KEY || 'local-controlled-key'},
 });
@@ -22,64 +23,66 @@ function traceSequence(count) {
   return Array.from({length: count}, (_, index) => ((index * 37 + 11) % 355) + 1).join(', ');
 }
 
-const controlled = http.createServer(async (request, response) => {
-  if (request.url?.endsWith('/models')) {
-    response.setHeader('content-type', 'application/json');
-    response.end(JSON.stringify({object: 'list', data: [attributable, rejected].map(id => ({id, object: 'model'}))}));
-    return;
-  }
-  let raw = '';
-  for await (const chunk of request) raw += chunk;
-  const body = JSON.parse(raw);
-  const content = body.messages?.at(-1)?.content;
-  const prompt = typeof content === 'string' ? content : (content || []).map(part => part.text || '').join('');
-  const count = Number(prompt.match(/(\d+)\s*个\s*1 到 355/)?.[1] || 0);
-  const trace = count > 0 || prompt.includes('1 到 355');
-  const answer = trace
-    ? (body.model === rejected ? 'I cannot complete this task.' : traceSequence(count || 300))
-    : '46.24 inches';
-  response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
-  const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
-  event({choices: [{index: 0, delta: {content: answer}}]});
-  event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
-  event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17}});
-  response.end('data: [DONE]\n\n');
-});
-await new Promise(resolve => controlled.listen(0, '127.0.0.1', resolve));
-const port = controlled.address().port;
+let controlled;
+let browser;
+let failure;
+try {
+  controlled = http.createServer(async (request, response) => {
+    if (request.url?.endsWith('/models')) {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({object: 'list', data: [attributable, rejected].map(id => ({id, object: 'model'}))}));
+      return;
+    }
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    const body = JSON.parse(raw);
+    const content = body.messages?.at(-1)?.content;
+    const prompt = typeof content === 'string' ? content : (content || []).map(part => part.text || '').join('');
+    const challenge = prompt.match(/(\d+)\s*个\s*1 到 355/);
+    if (!challenge) {
+      const message = `受控模型收到非指纹挑战题目，无法生成预期回答：${prompt.slice(0, 200)}`;
+      console.error(message);
+      response.writeHead(500, {'content-type': 'application/json'});
+      response.end(JSON.stringify({error: {message}}));
+      return;
+    }
+    const answer = body.model === rejected
+      ? 'I cannot complete this task.'
+      : traceSequence(Number(challenge[1]));
+    response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
+    const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
+    event({choices: [{index: 0, delta: {content: answer}}]});
+    event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
+    event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17}});
+    response.end('data: [DONE]\n\n');
+  });
+  await new Promise(resolve => controlled.listen(0, '127.0.0.1', resolve));
+  const port = controlled.address().port;
 
-function patch() {
-  return `${providerPatch({
+  async function selectTraceModel(page, model) {
+    const select = page.locator('.dic-test-controls select').first();
+    await select.selectOption({label: `${provider} / ${model}`});
+  }
+
+  const version = dshRun(['--version']).stdout.trim();
+  assert.match(version, /^\d+\.\d+\.\d+/);
+  await installProfile('attribution', `${providerPatch({
     baseURL: `http://127.0.0.1:${port}/v1`,
     provider,
     displayName: 'Attribution Provider',
     models: [attributable, rejected].map(id => ({id, name: id})),
     defaultModel: attributable,
   })}
-${pluginConfigOverride()}`;
-}
-
-async function selectTraceModel(page, model) {
-  const select = page.locator('.dic-test-controls select').first();
-  await select.selectOption({label: `${provider} / ${model}`});
-}
-
-let browser;
-let host;
-try {
-  const version = dshRun(['--version']).stdout.trim();
-  assert.match(version, /^\d+\.\d+\.\d+/);
-  await installProfile('attribution', patch());
-  host = await bootProfile('attribution');
+${pluginConfigOverride()}`);
+  const host = await bootProfile('attribution');
   const {client} = await openPageSession(host);
   for (const model of [attributable, rejected]) {
     const result = await postJSON(client, '/api/target', {provider, model, enabled: true});
     assert.equal(result.status, 200, result.text);
   }
 
-  let page;
   browser = await launchChromium();
-  page = await openNativePage(browser, host.login(), {tab: /模型指纹/});
+  const page = await openNativePage(browser, host.login(), {tab: /模型指纹/});
 
   // No batch yet: the existing empty state stays in place.
   await page.locator('.dic-empty').filter({hasText: '暂无指纹检测记录'}).waitFor({timeout: 15000});
@@ -116,9 +119,29 @@ try {
     '成功批次仍显示归因失败');
 
   console.log('native attribution check passed');
-} finally {
-  if (browser) await browser.close().catch(() => {});
-  if (host) await stopHost(host);
-  for (const extra of hosts) if (extra !== host) await stopHost(extra);
-  await new Promise(resolve => controlled.close(resolve));
+} catch (error) {
+  failure = error;
 }
+
+// Issue #20: stop this run's resources before removing only the directories it
+// created. Cleanup errors stay visible; an original test failure keeps its
+// message and is reported together with any cleanup failure.
+const cleanupFailures = [];
+async function cleanup(label, action) {
+  try {
+    await action();
+  } catch (error) {
+    cleanupFailures.push(new Error(`${label}失败：${error.message}`, {cause: error}));
+  }
+}
+if (browser) await cleanup('关闭浏览器', () => browser.close());
+for (const host of hosts) await cleanup(`停止宿主 ${host.name}`, () => stopHost(host));
+if (controlled) await cleanup('停止受控服务', () => new Promise(resolve => controlled.close(resolve)));
+await cleanup('删除隔离 home', () => rm(home, {recursive: true, force: true}));
+await cleanup('删除隔离 work', () => rm(work, {recursive: true, force: true}));
+
+if (failure) {
+  if (cleanupFailures.length) throw new AggregateError([failure, ...cleanupFailures], '模型归因回归失败，且清理失败');
+  throw failure;
+}
+if (cleanupFailures.length) throw new AggregateError(cleanupFailures, '模型归因回归清理失败');
