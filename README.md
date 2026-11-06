@@ -215,7 +215,7 @@ SVG 题中的完整 SVG 可直接静态预览，不执行脚本、外部资源�
 
 - `binaryPath`：指定 Go 后台二进制；省略时按平台选择包内 `bin/quality-check-<platform>-<arch>`。
 
-数据目录固定为用户级 `$DSH_HOME/dsh-intelligence-check/`（默认 `~/.dsh/dsh-intelligence-check/`），不接受 profile 目录覆盖，以保证同一用户同机共享、避免第二套后台争用数据目录锁。停用、退出或重启不会清除数据；卸载插件也不会自动删除共享数据目录，请按需手动清理。新版不读取旧版按 profile 保存的数据。
+数据目录仅由宿主 `DSH_HOME` 或宿主默认用户目录决定，固定为用户级 `$DSH_HOME/dsh-intelligence-check/`（默认 `~/.dsh/dsh-intelligence-check/`）。不接受 profile 目录覆盖，也不再接受插件 `config.dataDir` 或 `DSH_INTELLIGENCE_CHECK_DATA_DIR` 覆盖；遗留的覆盖设置不再生效，不会改变共享目录选择。这样可保证同一用户同机共享、避免第二套后台争用数据目录锁。停用、退出或重启不会清除数据；卸载插件也不会自动删除共享数据目录，请按需手动清理。新版不读取、迁移、覆盖或删除旧版按 profile 保存的数据。
 
 同一用户同机只运行一套检测后台与自动检测调度。首个桌面宿主实例持有数据目录锁并成为模型目录权威；其他 profile 的宿主读取同一连接并复用该后台，不覆盖桌面模型配置。持有实例退出后，仍在运行的桌面宿主会重新选举并继续使用同一 SQLite 状态。
 

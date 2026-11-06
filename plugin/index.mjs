@@ -43,10 +43,10 @@ export function isDesktopHost(env = process.env, config = {}) {
 }
 
 // One user-level store for every working directory and profile; never inside a
-// profile directory, so old per-profile databases stay untouched.
-export function sharedDataDir(env = process.env, config = {}) {
-  if (config.dataDir) return path.resolve(config.dataDir);
-  if (env.DSH_INTELLIGENCE_CHECK_DATA_DIR) return path.resolve(env.DSH_INTELLIGENCE_CHECK_DATA_DIR);
+// profile directory, so old per-profile databases stay untouched. Only the
+// host's DSH_HOME (or its default user directory) chooses it; legacy plugin
+// config and environment overrides are ignored.
+export function sharedDataDir(env = process.env) {
   return path.join(env.DSH_HOME || path.join(os.homedir(), '.dsh'), 'dsh-intelligence-check');
 }
 
@@ -69,7 +69,7 @@ export async function apply(ctx, config = {}) {
     bridge = await createBridge(ctx.llm);
     backend = createBackend({
       binaryPath: resolveBinary(root, config),
-      dataDir: sharedDataDir(process.env, config),
+      dataDir: sharedDataDir(process.env),
       bridge,
       shared: true,
     });
@@ -88,7 +88,7 @@ export async function apply(ctx, config = {}) {
     // starts or takes over the process.
     backend = createBackend({
       binaryPath: resolveBinary(root, config),
-      dataDir: sharedDataDir(process.env, config),
+      dataDir: sharedDataDir(process.env),
       shared: true,
       manage: false,
     });
