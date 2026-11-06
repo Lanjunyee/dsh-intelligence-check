@@ -9,7 +9,7 @@
 - 共享进程查询/等待、浏览器入口最后一次点击错误、`Continue` 弹层、`PLAYWRIGHT_MODULE` 提示和单次配置内联已落地；各调用方原有的隔离目录过滤、0/1 数量断言和超时保留。
 - #13 验收记录已更正：恢复回归实际使用仓库 `backendBinary()` 选择的副本，不是包内后台；历史命令、结果、产物哈希，以及副本与包内后台哈希一致的事实均保留。
 - 本轮只修改 `scripts/*.mjs` 和文档；包内跟踪文件聚合哈希保持 `10cd15331bd3dad39a5de0e228d0abc1385e23852a61488ca1a1d3a9544c9fb0`，未重新构建发行包，未重跑真实桌面验收。
-- 主代理使用已安装的 headless shell 对故障场景做最终补验（运行标识 `bm5aijjyj`）时，本记录尚未收到结果，因此该项标为待补充，不预测结果。
+- 主代理使用已安装的 headless shell 完成最终故障补验（`bm5aijjyj`，驱动 `/tmp/issue19-fault-validation.mjs`）：驱动 exit 0，两故障命令均 exit 1，本次 home/work 不存在、各自整个 TMPDIR 无存活进程。
 
 ## 2. 基线与范围
 
@@ -79,7 +79,7 @@ scripts/plugin-check.mjs
 | 改后成功运行 | `EXIT=0`，`native attribution check passed`；本次 `dsh-ic-attribution-*` 目录 0 个，无引用本次目录的存活进程；空状态、成功报告、拒答错误和切回成功报告通过 |
 | 无效 Playwright | `PLAYWRIGHT_MODULE=/nonexistent/playwright`，`EXIT=1`；保留原始 `AssertionError: 缺少 Playwright 模块：/nonexistent/playwright`；本次目录 0 个，无存活进程 |
 | 无效 DSH 二进制 | `DSH_BINARY=/nonexistent/dsh`，`EXIT=1`；保留原始 `TypeError: Cannot read properties of undefined (reading 'trim')`；本次目录 0 个 |
-| 历史目录 | 改前泄漏的两个目录在改后运行中仍存在，未被扫描或批量删除 |
+| 历史目录 | 改后运行期间，改前泄漏的两个目录仍存在，未被扫描或批量删除；最终收尾时按确切路径清理，见第 9 节 |
 
 ### 4.4 受影响的宿主回归（#21）
 
@@ -93,7 +93,7 @@ scripts/plugin-check.mjs
 | `node scripts/dsh-settings-check.mjs` | PASS，5/5 | 最终 harness 上重跑 |
 | `node scripts/native-attribution-check.mjs` | PASS | 合入 #20 后、修复 `Continue` 后运行，未修改该文件 |
 
-环境说明：长时间持续遮挡的悲观探针在默认 `msedge` 下约 30–32 秒出现 `Target page, context or browser has been closed`，调用日志仍含遮罩拦截；改用本机 Playwright bundled `chrome-headless-shell` 后稳定完成约 66 秒的完整重试。该现象记录为浏览器/环境限制，不是代码回归，也不表述为 `TimeoutError`。`plugin-check`、`lifecycle`、`recovery` 在最终弹层标签调整前运行；该调整只影响浏览器入口，不涉及这些脚本的代码路径。
+环境说明：长时间持续遮挡的悲观探针在默认 `msedge` 下约 30–32 秒出现 `Target page, context or browser has been closed`，调用日志仍含遮罩拦截；改用本机 Playwright bundled `chrome-headless-shell` 后稳定完成约 66 秒的完整重试。该现象记录为浏览器/环境限制，不是代码回归，也不表述为 `TimeoutError`（此句仅指持续遮挡探针；第 4.5 节故障注入在最终 headless shell 下确为 60 秒报告等待超时）。`plugin-check`、`lifecycle`、`recovery` 在最终弹层标签调整前运行；该调整只影响浏览器入口，不涉及这些脚本的代码路径。
 
 ### 4.5 追加故障验证（#20）
 
@@ -101,15 +101,17 @@ scripts/plugin-check.mjs
 
 | 故障 | 实际结果 |
 |---|---|
-| response：把可归因模型的成功回答替换为非数字文本 | 命令 `EXIT=1`；真实 DOM 显示「本轮无法归因」；本次 home/work 无剩余，整个 TMPDIR 无存活进程。证据根目录 `/tmp/issue19-response-iWML5o`，日志 `command.log` |
-| prompt：把真实挑战请求中的数量改为「若干」 | 输出明确的挑战格式无法解析诊断并返回 HTTP 500；命令 `EXIT=1`；本次目录与进程为空。证据根目录 `/tmp/issue19-prompt-NMMREj`，日志 `command.log`；汇总见 `/tmp/issue19-fault-results.json` |
+| response：把可归因模型的成功回答替换为非数字文本 | 命令 `EXIT=1`；真实 DOM 显示「本轮无法归因：没有可用回答：请粘贴完整数字序列；拒答或严重截断的回答不会计入。」；本次 home/work 无剩余，整个 TMPDIR 无存活进程。证据根目录 `/tmp/issue19-response-NR9fiH`，日志 `command.log` |
+| prompt：把真实挑战请求中的数量改为「若干」 | 输出明确「受控模型收到非指纹挑战题目，无法生成预期回答」诊断并返回 HTTP 500；命令 `EXIT=1`；本次目录与进程为空。证据根目录 `/tmp/issue19-prompt-jvDQ82`，日志 `command.log` |
+
+两命令最终都停在成功报告等待阶段，最后错误均为 `locator.waitFor: Timeout 60000ms exceeded`（`name: TimeoutError`），等待 `locator('.dic-trace-report')` 可见。结构化结果同时包含 response 与 prompt 两项，见 `/tmp/issue19-fault-results.json`。
 
 驱动记录与边界：
 
+- 最终 headless-shell 驱动 `node /tmp/issue19-fault-validation.mjs` 依次运行两故障，驱动 exit 0；使用 `PLAYWRIGHT_MODULE=/tmp/dsh-issue12-pw/node_modules/playwright-core` 与 `PLAYWRIGHT_EXECUTABLE=/Users/jxq/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell`。
 - 最初两轮驱动对错误类型和页面文案作了过窄假设（限定 `TimeoutError`，并对 prompt 故障复用 response 的 DOM 归因失败文案），因此驱动整体失败。这些驱动失败不记为产品回归通过，也不改写为测试通过。
-- 两种故障随后按各自真实行为分别核对。response 命令最终保留的是成功报告等待阶段的 `Target page, context or browser has been closed`，不是 `TimeoutError`；本轮没有证明该具体错误类型的原因。
-- `/tmp/issue19-fault-results.json` 只含 prompt 故障的结构化结果；response 故障结果记录在 `/tmp/issue19-response-iWML5o/command.log` 与 `/tmp/issue-19-fault-command.md`。
-- 主代理使用已安装 headless shell 的最终补验（`bm5aijjyj`）在本文完成时仍在运行，结果待补充；本文不据此新增通过结论。
+- 早期在默认 Edge 下，两故障曾因浏览器约 30–32 秒被外部关闭而以 `Target page, context or browser has been closed` 结束；这是环境限制，不能作为 `TimeoutError` 结论。改用稳定 headless shell 后已完整走到预期报告超时；两种环境的结束错误分别记录，不混写。
+- 主代理的最终补验已完成，不再有待补充的故障结果。
 
 ## 5. 对 #13 验收记录的更正
 
@@ -126,6 +128,7 @@ scripts/plugin-check.mjs
 
 - #20/#21 实施记录中的归因清理、受控回答、宿主回归与浏览器诊断验证（第 4.3–4.5 节）。
 - 主代理对 7 个 `.mjs` 的逐个 `node --check`，以及 `node --test plugin/*.test.mjs scripts/ui.test.mjs` 的 25 项通过。
+- 主代理 headless-shell 最终故障补验 `bm5aijjyj`：驱动 exit 0，response/prompt 两命令均 exit 1，本次目录与进程清理符合预期。
 
 **沿用 #13 历史证据，未在本轮重跑**
 
@@ -147,17 +150,17 @@ scripts/plugin-check.mjs
 
 ## 8. 未验证项与限制
 
-- 最终 headless shell 故障补验结果待补充（第 4.5 节），本文不预测其结论。
+- 最终 headless-shell 故障补验已完成（第 4.5 节）；初期 Edge 下约 30–32 秒的浏览器外部关闭是环境限制，最终稳定浏览器完整走到 60 秒报告等待超时。
 - 持续遮挡探针依赖既有约 66 秒的 20×3s 重试预算；默认 Edge 下的外部关闭是环境限制，未缩短或绕过重试策略。
 - 真实 DSH 浏览器回归使用 `msedge` / bundled headless shell，未使用真实桌面窗口；#13 的真实 Desktop 证据不被本轮重述或替代。
 - 归因清理的原始错误路径已由无效 Playwright、无效 DSH 二进制和追加故障触发；清理失败聚合分支未从外部强制触发。
-- response 故障的最终错误是成功报告等待阶段的 `Target page, context or browser has been closed`；该错误类型的具体原因未证明。
+- 两种故障在最终 headless-shell 下均以成功报告等待的 `locator.waitFor: Timeout 60000ms exceeded`（TimeoutError）结束；此前 Edge 的 `Target page, context or browser has been closed` 是环境限制，两者分别记录。
 
 ## 9. 数据隔离与清理
 
 - 全部模型请求指向本机回环受控服务；未使用真实凭据、用户旧数据或付费模型。
 - 归因回归只清理本次创建的 home/work、浏览器、宿主和受控服务，不扫描或批量删除历史临时目录。
-- 改前泄漏目录作为历史事实保留，用于证明未发生批量清理。
+- 改前泄漏的两个已知目录（`/tmp/issue20-red/dsh-ic-attribution-home-dWjAZ3`、`/tmp/issue20-red/dsh-ic-attribution-work-TXC6cl`）在改后成功运行期间未被误删，证明清理只作用于本次创建资源；最终收尾时主代理确认无匹配存活进程后，只按这两个确切路径删除本次 red 对照资源，不是扫描或批量清理历史目录。
 - 临时探针、故障注入钩子和证据目录位于 `/tmp`，不进入仓库。
 
 ## 10. 复现命令
@@ -201,4 +204,12 @@ TMPDIR=$(mktemp -d) PLAYWRIGHT_MODULE=/nonexistent/playwright node scripts/nativ
 TMPDIR=$(mktemp -d) DSH_BINARY=/nonexistent/dsh node scripts/native-attribution-check.mjs
 ```
 
-两种追加故障依赖 `/tmp` 下的临时 `--import` 注入钩子，不属于仓库公共 API，未纳入可复现命令；其结果和边界见第 4.5 节。
+两种追加故障依赖 `/tmp` 下的临时 `--import` 注入钩子，不属于仓库公共 API。最终补验命令为：
+
+```sh
+PLAYWRIGHT_MODULE=/tmp/dsh-issue12-pw/node_modules/playwright-core \
+PLAYWRIGHT_EXECUTABLE=/Users/jxq/Library/Caches/ms-playwright/chromium_headless_shell-1243/chrome-headless-shell-mac-arm64/chrome-headless-shell \
+node /tmp/issue19-fault-validation.mjs
+```
+
+驱动 exit 0 表示两个故障命令都按预期以非零退出并完成清理；各命令的实际结果和证据目录见第 4.5 节。
