@@ -118,8 +118,8 @@ export async function getState(client) {
   return response.json();
 }
 
-// Shared process observation for the isolated hosts. Callers keep their own
-// data directory filter, expected count, timeout and failure message.
+// 隔离宿主的共享进程观测：调用方传入隔离目录、期望数量、超时和失败消息，
+// 目录过滤由 backendProcesses 完成。
 export function backendProcesses(dataDir) {
   return execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
     .split('\n').filter(line => line.includes(dataDir));
@@ -134,13 +134,31 @@ export async function waitForProcessCount(dataDir, count, {timeout = 10000, mess
   assert.equal(backendProcesses(dataDir).length, count, message);
 }
 
-// Shared Playwright loading boundary for the real native-page regressions.
-export async function launchChromium() {
+// 共享 Playwright 加载边界：必需加载失败时抛出含 PLAYWRIGHT_MODULE 的提示；
+// 可选加载失败时输出同样提示并返回 undefined，由调用方跳过浏览器 UI。
+export function loadPlaywright({optional = false} = {}) {
   const bundled = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
   const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundled) ? bundled : '');
-  assert.ok(playwrightPath && existsSync(playwrightPath),
-    `缺少 Playwright 模块，请设置 PLAYWRIGHT_MODULE 指向可用的 playwright 包：${playwrightPath || '(未设置且未找到内置模块)'}`);
-  const {chromium} = createRequire(import.meta.url)(playwrightPath);
+  const hint = `缺少或无法加载 Playwright 模块，请设置 PLAYWRIGHT_MODULE 指向可用的 playwright 包：${playwrightPath || '(未设置且未找到内置模块)'}`;
+  let loaded;
+  let failure;
+  if (playwrightPath && existsSync(playwrightPath)) {
+    try {
+      loaded = createRequire(import.meta.url)(playwrightPath);
+    } catch (error) {
+      failure = new Error(`${hint}；加载失败：${error.message}`, {cause: error});
+    }
+  } else {
+    failure = new Error(hint);
+  }
+  if (!failure) return loaded;
+  if (!optional) throw failure;
+  console.warn(`[ui] ${failure.message}；已跳过浏览器 UI 验证`);
+}
+
+// 共享 Playwright 启动入口；模块选择和浏览器选择方式保持不变。
+export async function launchChromium() {
+  const {chromium} = loadPlaywright();
   const options = {headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge'};
   if (process.env.PLAYWRIGHT_EXECUTABLE) {
     options.executablePath = process.env.PLAYWRIGHT_EXECUTABLE;
@@ -153,7 +171,9 @@ export async function launchChromium() {
 // and the requested tab. Callers keep their own assertions and teardown.
 export async function openNativePage(browser, login, {tab}) {
   const page = await browser.newPage();
+  // 在 goto、入口点击和切换标签前注册，确保早期加载错误也能输出。
   page.on('pageerror', error => console.error('[ui] page error:', error.message));
+  page.on('console', message => { if (message.type() === 'error') console.error('[ui] console:', message.text()); });
   await page.goto(login);
   const entry = page.getByText('模型质量检测', {exact: true}).first();
   await entry.waitFor({timeout: 30000});

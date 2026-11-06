@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';
 import {rm} from 'node:fs/promises';
-import {createRequire} from 'node:module';
 import http from 'node:http';
 import path from 'node:path';
 import {
-  backendBinary, createDshHarness, getState, openNativePage, openPageSession,
+  backendBinary, createDshHarness, getState, loadPlaywright, openNativePage, openPageSession,
   pluginConfigOverride, postJSON, waitForProcessCount,
 } from './dsh-harness.mjs';
 
@@ -18,9 +17,7 @@ const {home, work, env, hosts, dshRun, installProfile, bootProfile, stopHost} = 
 });
 assert.ok(existsSync(backendBinary()), '缺少后台二进制：请先 go build -o bin/quality-check ./cmd/quality-check');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-const bundledPlaywright = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
-const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundledPlaywright) ? bundledPlaywright : '');
-const {chromium} = playwrightPath ? createRequire(import.meta.url)(playwrightPath) : {};
+const {chromium} = loadPlaywright({optional: true}) || {};
 let browser;
 
 const requests = [];
