@@ -299,6 +299,10 @@ func (s *Service) ClearResults(ids []string) error {
 			kept = append(kept, result)
 			continue
 		}
+		if result.Verdict == "skipped" {
+			// A challenge that was never started is not a consumed request.
+			continue
+		}
 		day := result.Time.UTC().Format("2006-01-02")
 		if s.state.ClearedUsage[day] == nil {
 			s.state.ClearedUsage[day] = make(map[string]map[string]int)
@@ -348,7 +352,7 @@ func (s *Service) Trigger(id TargetID, prompt string) error {
 func (s *Service) dayCountLocked(id TargetID, day string) int {
 	count := s.state.ClearedUsage[day][id.Provider][id.Model]
 	for _, r := range s.state.Results {
-		if r.Provider == id.Provider && r.Model == id.Model && r.Time.UTC().Format("2006-01-02") == day {
+		if r.Provider == id.Provider && r.Model == id.Model && r.Verdict != "skipped" && r.Time.UTC().Format("2006-01-02") == day {
 			count++
 		}
 	}
@@ -360,11 +364,15 @@ func (s *Service) CancelTest(id TargetID) error {
 	defer s.mu.Unlock()
 	cancel := s.testCancels[id]
 	if cancel == nil {
-		return errors.New("该模型没有可取消的质量检测")
+		return errors.New("该模型没有可取消的检测")
 	}
 	cancel()
 	return nil
 }
+
+// CancelModelTrace shares the per-target cancellation slot with quality checks;
+// a target can only have one active run at a time.
+func (s *Service) CancelModelTrace(id TargetID) error { return s.CancelTest(id) }
 
 func (s *Service) run(ctx context.Context, id TargetID, p Prompt) {
 	defer s.wg.Done()

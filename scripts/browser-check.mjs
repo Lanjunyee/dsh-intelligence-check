@@ -7,6 +7,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {verifyHistoryAndReview, verifyHistoryAfterRestart} from './browser-history.mjs';
 import {verifyPreviews} from './browser-preview.mjs';
+import {verifyModelTrace, verifyModelTraceHistory} from './browser-modeltrace.mjs';
 
 // Real DSH profile + host-configured controlled OpenAI-compatible services.
 // The browser path goes web console -> Go backend -> plugin -> ctx.llm.stream.
@@ -26,8 +27,15 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const sessionTexts = [];
 const fixture = {};
 
-function mockService(name, streamDelayMs) {
+function traceSequence(count) {
+  const values = [];
+  for (let index = 0; index < count; index++) values.push(((index * 37 + 11) % 355) + 1);
+  return values.join(', ');
+}
+
+function mockService(name, streamDelayMs, options = {}) {
   const requests = [];
+  const cancelled = [];
   const server = http.createServer(async (request, response) => {
     if (request.url?.endsWith('/models')) {
       response.setHeader('content-type', 'application/json');
@@ -38,32 +46,53 @@ function mockService(name, streamDelayMs) {
     for await (const chunk of request) raw += chunk;
     const body = JSON.parse(raw);
     const prompt = String(body.messages?.at(-1)?.content ?? '');
-    requests.push({prompt, model: body.model, stream: body.stream});
+    const trace = prompt.includes('1 到 355');
+    requests.push({prompt, model: body.model, stream: body.stream, trace, max_tokens: body.max_tokens});
     const milk = prompt.includes('A previously isolated, newly discovered');
     const artwork = prompt.includes('创建一个 HTML') || prompt.includes('Generate an SVG');
     const answer = milk ? (name === 'one' ? '46.24 inches' : '48 inches')
       : artwork ? (fixture.manualSVG || 'no markup')
       : `business ok from ${name}`;
+    let pieces = [answer];
+    let delay = 0;
+    if (trace) {
+      if (options.traceInvalid) {
+        pieces = ['I cannot complete this task.'];
+      } else {
+        const count = Number(prompt.match(/(\d+) 个 1 到 355/)?.[1] || 300);
+        const sequence = traceSequence(count);
+        pieces = options.traceChunkDelayMs ? (sequence.match(/.{1,240}/gs) || [sequence]) : [sequence];
+        delay = options.traceChunkDelayMs || 0;
+      }
+    } else if (milk && name === 'one' && streamDelayMs) {
+      pieces = ['46.', '24 inches'];
+      delay = streamDelayMs;
+    }
+    let completed = false;
+    response.on('close', () => { if (!completed) cancelled.push({model: body.model, trace}); });
     response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
-    const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
-    const pieces = milk && name === 'one' && streamDelayMs ? ['46.', '24 inches'] : [answer];
+    const event = value => { if (!response.destroyed) response.write(`data: ${JSON.stringify(value)}\n\n`); };
     for (let index = 0; index < pieces.length; index++) {
-      if (index > 0 && streamDelayMs) await wait(streamDelayMs);
+      if (index > 0 && delay) await wait(delay);
+      if (response.destroyed) return;
       event({choices: [{index: 0, delta: {content: pieces[index]}}]});
     }
     event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
     event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: milk ? 17 : 4}});
+    completed = true;
     response.end('data: [DONE]\n\n');
   });
   return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve({
     origin: `http://127.0.0.1:${server.address().port}`,
     requests,
+    cancelled,
     close: () => new Promise(done => server.close(done)),
   })));
 }
 
 const one = await mockService('one', 4500);
-const two = await mockService('two', 0);
+const two = await mockService('two', 0, {traceInvalid: true});
+const slow = await mockService('slow', 0, {traceChunkDelayMs: 500});
 const hosts = [];
 let browser;
 
@@ -102,6 +131,7 @@ async function installProfile(name) {
     providers:
 ${provider('fixture-one', 'Fixture One', one.origin)}
 ${provider('fixture-two', 'Fixture Two', two.origin)}
+${provider('fixture-slow', 'Fixture Slow', slow.origin)}
 - id: agent-default-model
   config:
     provider: fixture-one
@@ -290,11 +320,17 @@ try {
   await selectTarget(page, 'fixture-one');
   await verifyPreviews({page, context, fixture, root, errors});
 
+  // Manual ModelTrace through the host bridge: complete, invalid and cancelled batches.
+  await page.locator('#tab-models').click();
+  await addTarget(page, 'fixture-slow');
+  await verifyModelTrace({page, slow, one});
+
   // Records, reviews and artwork previews survive a backend restart.
   await stopHost(host);
   host = await bootProfile('stream-check');
   await openConsole(page, host);
   await verifyHistoryAfterRestart({page, reviewed: reviewed.reviewed});
+  await verifyModelTraceHistory(page);
   await page.locator('#tab-history').click();
   await page.locator('#historyPrompt').selectOption('svg');
   assert.equal(await page.locator('#results details').count(), 1, '重启后 SVG 作品记录丢失');
@@ -313,12 +349,13 @@ try {
   assert.deepEqual(errors, []);
 
   await stopHost(host);
-  console.log(`PASS: DSH ${version} 隔离 profile 浏览器主链路：七题原文、provider 路由、实时增量、历史/组合身份筛选/同题对比/导出/下载/复制、人工评审与自动评估分离及重启读取、HTML/SVG 隔离预览、独立业务会话并行`);
+  console.log(`PASS: DSH ${version} 隔离 profile 浏览器主链路：七题原文、provider 路由、实时增量、历史/组合身份筛选/同题对比/导出/下载/复制、人工评审与自动评估分离及重启读取、HTML/SVG 隔离预览、手动 ModelTrace 完整/无效/取消批次与闭集归因、独立业务会话并行`);
 } finally {
   if (browser) await browser.close();
   for (const host of hosts) await stopHost(host);
   await one.close();
   await two.close();
+  await slow.close();
   await rm(home, {recursive: true, force: true});
   await rm(work, {recursive: true, force: true});
 }

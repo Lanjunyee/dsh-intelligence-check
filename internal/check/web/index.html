@@ -78,16 +78,19 @@
     <div class="test-controls trace-controls">
       <label>检测模型<select id="traceModel" aria-label="指纹检测模型"></select></label>
       <label>检测批次<select id="traceBatch" aria-label="指纹检测批次"></select></label>
-      <button id="traceRun" class="primary"><i data-icon="Fingerprint"></i><span>运行三条指纹挑战</span></button>
+      <div class="actions trace-actions">
+        <button id="traceCancel" class="secondary" hidden><i data-icon="X"></i><span>取消批次</span></button>
+        <button id="traceRun" class="primary"><i data-icon="Fingerprint"></i><span>运行三条指纹挑战</span></button>
+      </div>
     </div>
-    <p class="disclaimer">概率仅表示当前候选库内的相似程度，不证明模型身份；指纹结果不影响模型调用。</p>
+    <p class="disclaimer">概率仅表示当前候选库内的行为相似程度（闭集），不等于模型身份认证；候选库之外的模型也会被归到最相似候选。指纹结果不影响模型调用，且始终由使用者手动发起。</p>
     <div id="traceResults" aria-live="polite"></div>
   </section>
   <section id="view-history" class="view" role="tabpanel" aria-labelledby="tab-history" hidden>
     <div class="section-heading"><h2>检测记录</h2><span id="historyCount" class="meta"></span></div>
     <div class="history-controls">
       <label>模型<select id="historyModel" aria-label="记录模型"><option value="">全部模型</option></select></label>
-      <label>结果<select id="historyVerdict" aria-label="记录结果"><option value="">全部结果</option><option value="passed">通过</option><option value="failed">未通过</option><option value="unavailable">不可用</option><option value="manual">人工评价</option><option value="running">进行中</option></select></label>
+      <label>结果<select id="historyVerdict" aria-label="记录结果"><option value="">全部结果</option><option value="passed">通过</option><option value="failed">未通过</option><option value="unavailable">不可用</option><option value="cancelled">已取消</option><option value="skipped">未开始</option><option value="manual">人工评价</option><option value="running">进行中</option></select></label>
       <label>题目<select id="historyPrompt" aria-label="记录题目"><option value="">全部题目</option></select></label>
       <label>审核<select id="historyReview" aria-label="记录审核"><option value="">全部审核</option><option value="pending">待确认</option><option value="accepted">确认通过</option><option value="rejected">标记问题</option></select></label>
     </div>

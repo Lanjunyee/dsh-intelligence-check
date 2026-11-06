@@ -1,6 +1,6 @@
 import { $, text, icon, hydrateIcons, syncSelect, dateTime, names, identity, modelLabel, usageLabel, usageTotals } from './ui.js';
 import { filteredHistory, renderHistory, renderComparison, exportFilteredHistory, resetHistoryLimit, loadMoreHistory } from './history.js';
-import { renderModelTrace, runModelTrace } from '../modeltrace/panel.js';
+import { renderModelTrace, runModelTrace, cancelModelTrace } from '../modeltrace/panel.js';
 import { analyzeAnswer } from './answer-analysis.js';
 import { renderSVGPreview } from './svg-preview.js';
 import { renderHTMLPreview, stopHTMLPreview } from './html-preview.js';
@@ -152,7 +152,7 @@ function showPrompt() {
 function dayCount(provider, model) {
   const day = new Date().toISOString().slice(0, 10);
   const cleared = data.state.cleared_usage?.[day] || {};
-  const count = data.state.results.filter(r => (!provider || (r.provider === provider && r.model === model)) && new Date(r.time).toISOString().slice(0, 10) === day).length;
+  const count = data.state.results.filter(r => r.verdict !== 'skipped' && (!provider || (r.provider === provider && r.model === model)) && new Date(r.time).toISOString().slice(0, 10) === day).length;
   if (provider) return count + (cleared[provider]?.[model] || 0);
   return count + Object.values(cleared).reduce((total, byModel) => total + Object.values(byModel).reduce((a, b) => a + b, 0), 0);
 }
@@ -312,6 +312,9 @@ $('#cancelTest').onclick = () => pending($('#cancelTest'), async () => {
 });
 $('#traceRun').onclick = () => pending($('#traceRun'), async () => {
   await runModelTrace(request, data); feedback('已开始三条指纹挑战', true); await refresh();
+});
+$('#traceCancel').onclick = () => pending($('#traceCancel'), async () => {
+  await cancelModelTrace(request, data); feedback('已取消当前指纹批次', true); await refresh();
 });
 $('#target').onsubmit = event => {
   event.preventDefault();

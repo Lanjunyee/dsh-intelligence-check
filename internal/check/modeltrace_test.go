@@ -4,9 +4,148 @@ import (
 	"context"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestModelTraceCancelAbortsActiveCallAndSkipsUnstarted(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	started := make(chan struct{})
+	var calls atomic.Int32
+	transport := &fakeTransport{generate: func(ctx context.Context, _ TargetID, _ string, _ func(string), _ GenerateParams) (Generation, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+			<-ctx.Done()
+			return Generation{Answer: "partial", Finish: "aborted", Error: &GenerationError{Code: "ABORTED", Message: "Request was aborted"}}, ctx.Err()
+		}
+		return Generation{Answer: "1,2,3", Finish: "stop"}, nil
+	}}
+	s := fixtureWithTransport(t, transport)
+	if err := s.Configure(Config{DailyLimit: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTarget(id, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TriggerModelTrace(id); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := s.CancelModelTrace(id); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, s)
+	state, _ := s.Snapshot()
+	if len(state.Results) != 3 {
+		t.Fatalf("cancelled batch lost entries: %+v", state.Results)
+	}
+	for _, result := range state.Results {
+		if result.Batch != state.Results[0].Batch {
+			t.Fatal("cancelled batch lost batch association")
+		}
+	}
+	active := state.Results[0]
+	if active.Verdict != "cancelled" || active.Error != "检测已取消" || active.Answer != "partial" || active.Finish != "aborted" || active.ErrorCode != "ABORTED" {
+		t.Fatalf("active challenge not explained: %+v", active)
+	}
+	for _, skipped := range state.Results[1:] {
+		if skipped.Verdict != "skipped" || !strings.Contains(skipped.Error, "未开始") || skipped.Answer != "" {
+			t.Fatalf("unstarted challenge not explained: %+v", skipped)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("cancel did not stop unstarted challenges: %d calls", calls.Load())
+	}
+	s.mu.Lock()
+	counted := s.dayCountLocked(id, time.Now().UTC().Format("2006-01-02"))
+	s.mu.Unlock()
+	if counted != 1 {
+		t.Fatalf("unstarted requests counted against budget: %d", counted)
+	}
+}
+
+func TestModelTraceFailureKeepsEveryEntryExplainable(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	var calls atomic.Int32
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		if calls.Add(1) == 1 {
+			return Generation{Answer: "partial", Finish: "error", Error: &GenerationError{Code: "RATE_LIMIT", Message: "quota exceeded"}}, nil
+		}
+		return Generation{Answer: "1,2,3", Usage: usage(5), Finish: "stop"}, nil
+	}}
+	s := fixtureWithTransport(t, transport)
+	if err := s.Configure(Config{DailyLimit: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTarget(id, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TriggerModelTrace(id); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, s)
+	state, _ := s.Snapshot()
+	if len(state.Results) != 3 {
+		t.Fatalf("failed batch lost entries: %+v", state.Results)
+	}
+	failed := state.Results[0]
+	if failed.Verdict != "unavailable" || failed.Error != "quota exceeded" || failed.Finish != "error" || failed.ErrorCode != "RATE_LIMIT" || failed.Answer != "partial" {
+		t.Fatalf("failed challenge not explained: %+v", failed)
+	}
+	for _, result := range state.Results[1:] {
+		if result.Verdict != "manual" || result.Answer != "1,2,3" {
+			t.Fatalf("independent challenge did not keep its raw answer: %+v", result)
+		}
+	}
+	if calls.Load() != 3 {
+		t.Fatalf("failure stopped independent challenges: %d calls", calls.Load())
+	}
+}
+
+func TestModelTraceInvalidAnswerKeepsRawText(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		return Generation{Answer: "I cannot complete this task.", Finish: "stop"}, nil
+	}}
+	s := fixtureWithTransport(t, transport)
+	if err := s.SetTarget(id, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TriggerModelTrace(id); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, s)
+	state, _ := s.Snapshot()
+	if len(state.Results) != 3 {
+		t.Fatalf("invalid batch lost entries: %+v", state.Results)
+	}
+	for _, result := range state.Results {
+		if result.Verdict != "manual" || result.Answer != "I cannot complete this task." || result.Finish != "stop" {
+			t.Fatalf("invalid answer not preserved for attribution review: %+v", result)
+		}
+	}
+}
+
+func TestModelTraceBudgetRejectionCreatesNoRequests(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	transport := &fakeTransport{}
+	s := fixtureWithTransport(t, transport)
+	if err := s.Configure(Config{DailyLimit: 2}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTarget(id, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TriggerModelTrace(id); err == nil || !strings.Contains(err.Error(), "预算") {
+		t.Fatalf("insufficient budget not explained: %v", err)
+	}
+	state, _ := s.Snapshot()
+	calls, _ := transport.snapshot()
+	if len(state.Results) != 0 || len(calls) != 0 {
+		t.Fatalf("budget rejection created requests: results=%d calls=%d", len(state.Results), len(calls))
+	}
+}
 
 func TestModelTraceBatchBudgetAndTargetIsolation(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
@@ -54,6 +193,14 @@ func TestModelTraceBatchBudgetAndTargetIsolation(t *testing.T) {
 	for _, prompt := range prompts {
 		if !strings.Contains(prompt, "1 到 355") {
 			t.Fatal("independent probe payload invalid")
+		}
+	}
+	transport.mu.Lock()
+	params := append([]GenerateParams(nil), transport.params...)
+	transport.mu.Unlock()
+	for _, param := range params {
+		if param.MaxTokens != DefaultMaxTokens {
+			t.Fatalf("generation parameter lost: %+v", param)
 		}
 	}
 	if err := s.TriggerModelTrace(id); err == nil || !strings.Contains(err.Error(), "预算") {

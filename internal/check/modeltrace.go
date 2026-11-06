@@ -69,32 +69,74 @@ func (s *Service) TriggerModelTrace(id TargetID) error {
 		s.state.Results = s.state.Results[:start]
 		return err
 	}
+	if s.testCancels == nil {
+		s.testCancels = make(map[TargetID]context.CancelFunc)
+	}
+	batchCtx, cancel := context.WithCancel(s.ctx)
+	s.testCancels[id] = cancel
 	s.running[id] = true
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		defer func() { s.mu.Lock(); delete(s.running, id); s.mu.Unlock() }()
-		for i, r := range probes {
-			ctx, cancel := context.WithTimeout(s.ctx, 180*time.Second)
-			gen, err := s.transport.Generate(ctx, id, r.PromptText, nil, GenerateParams{MaxTokens: DefaultMaxTokens})
+		defer func() {
 			cancel()
-			r.Answer, r.Usage, r.Finish, r.Verdict = gen.Answer, gen.Usage, gen.Finish, "manual"
-			if gen.Error != nil {
-				r.ErrorCode = gen.Error.Code
-			}
-			if err != nil {
-				r.Verdict, r.Error = "unavailable", err.Error()
-			} else if gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED") {
-				r.Verdict, r.Error = "unavailable", "检测已取消"
-			} else if gen.Finish == "error" || gen.Error != nil {
-				r.Verdict, r.Error = "unavailable", generationFailure(gen)
-			}
 			s.mu.Lock()
-			s.state.Results[start+i] = r
+			delete(s.running, id)
+			delete(s.testCancels, id)
+			s.mu.Unlock()
+		}()
+		markSkipped := func(from int, reason string) {
+			s.mu.Lock()
+			for j := from; j < len(probes); j++ {
+				if s.state.Results[start+j].Verdict == "running" {
+					s.state.Results[start+j].Verdict = "skipped"
+					s.state.Results[start+j].Error = reason
+				}
+			}
 			if err := s.store.Save(s.state); err != nil {
 				s.health = err.Error()
 			}
 			s.mu.Unlock()
+		}
+		for i, r := range probes {
+			if batchCtx.Err() != nil {
+				markSkipped(i, "批次已取消，未开始")
+				break
+			}
+			callCtx, callCancel := context.WithTimeout(batchCtx, 180*time.Second)
+			gen, err := s.transport.Generate(callCtx, id, r.PromptText, nil, GenerateParams{MaxTokens: DefaultMaxTokens})
+			timedOut := errors.Is(callCtx.Err(), context.DeadlineExceeded)
+			cancelled := batchCtx.Err() != nil
+			callCancel()
+			r.Answer, r.Usage, r.Finish, r.Verdict = gen.Answer, gen.Usage, gen.Finish, "manual"
+			if gen.Error != nil {
+				r.ErrorCode = gen.Error.Code
+			}
+			switch {
+			case err != nil && cancelled:
+				r.Verdict, r.Error = "cancelled", "检测已取消"
+			case err != nil && timedOut:
+				r.Verdict, r.Error = "unavailable", "检测超时"
+			case err != nil:
+				r.Verdict, r.Error = "unavailable", err.Error()
+			case (gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED")) && cancelled:
+				r.Verdict, r.Error = "cancelled", "检测已取消"
+			case gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED"):
+				r.Verdict, r.Error = "unavailable", "检测已取消"
+			case gen.Finish == "error" || gen.Error != nil:
+				r.Verdict, r.Error = "unavailable", generationFailure(gen)
+			}
+			s.mu.Lock()
+			s.state.Results[start+i] = r
+			err = s.store.Save(s.state)
+			if err != nil {
+				s.health = err.Error()
+			}
+			s.mu.Unlock()
+			if cancelled {
+				markSkipped(i+1, "批次已取消，未开始")
+				break
+			}
 		}
 	}()
 	return nil

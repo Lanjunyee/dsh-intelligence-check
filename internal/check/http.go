@@ -196,6 +196,8 @@ func (s *Service) ManagedHandler(access *Access, console *Console) http.Handler 
 		var err error
 		if a.Action == "cancel-test" {
 			err = s.CancelTest(id)
+		} else if a.Action == "cancel-modeltrace" {
+			err = s.CancelModelTrace(id)
 		} else if a.Action == "modeltrace" {
 			err = s.TriggerModelTrace(id)
 		} else if a.Action == "test" {

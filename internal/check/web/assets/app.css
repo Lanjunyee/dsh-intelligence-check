@@ -17,3 +17,9 @@ textarea{font:inherit;color:var(--text);background:var(--surface);border:1px sol
 .html-preview.expanded-preview{position:fixed;inset:12px;z-index:20;background:var(--bg);padding:16px;margin:0;overflow:auto;border:1px solid var(--line)}.expanded-preview #htmlFrameHost,.expanded-preview iframe{height:calc(100dvh - 180px);min-height:180px}
 .test-controls:has(#cancelTest:not([hidden])){grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto 42px}.test-controls #cancelTest{min-width:42px}@media(max-width:680px){.test-controls:has(#cancelTest:not([hidden])){grid-template-columns:minmax(0,1fr) 42px}.test-controls label{grid-column:1/-1}}
 @media(prefers-reduced-motion:reduce){button{transition:none}button:active{transform:none}}
+.trace-actions{display:flex;gap:8px;align-items:center}
+.segment.cancelled{background:var(--muted)}
+.trace-items{list-style:none;display:grid;gap:8px;margin:0 0 20px;padding:0}
+.trace-item{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap;font-size:var(--small)}
+.trace-item .label{color:var(--muted);min-width:56px}
+.state.cancelled,.state.skipped{color:var(--muted)}

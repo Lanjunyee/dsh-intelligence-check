@@ -35,7 +35,7 @@ export function syncSelect(select, options) {
 export const dateTime = raw => Date.parse(raw) > 0 ? new Date(raw).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '未通过';
 export const identity = (provider, model) => provider + '\u0000' + model;
 export const modelLabel = (provider, model) => `${provider} / ${model}`;
-export const names = { passed: '通过', unavailable: '检测不可用', manual: '待人工评价', failed: '未通过', running: '进行中', empty: '空回答', truncated: '回答截断' };
+export const names = { passed: '通过', unavailable: '检测不可用', manual: '待人工评价', failed: '未通过', running: '进行中', empty: '空回答', truncated: '回答截断', cancelled: '已取消', skipped: '未开始' };
 function reportedTokens(usage) {
   if (!usage || typeof usage !== 'object') return undefined;
   if (Number.isFinite(usage.total_tokens)) return usage.total_tokens;
@@ -45,16 +45,25 @@ function reportedTokens(usage) {
   return (input || 0) + (output || 0);
 }
 export function usageLabel(record) {
+  if (record?.verdict === 'skipped') return '未开始';
   const total = reportedTokens(record?.usage);
   return total === undefined ? '用量不可用' : `${total} tokens`;
 }
 export function usageTotals(records) {
   let total = 0, reported = 0, missing = 0;
   for (const record of records) {
-    if (record.verdict === 'running') continue;
+    if (record.verdict === 'running' || record.verdict === 'skipped') continue;
     const tokens = reportedTokens(record.usage);
     if (tokens === undefined) missing++;
     else { total += tokens; reported++; }
   }
   return { total, reported, missing };
+}
+// ModelTrace has three entries per batch; unstarted entries explain a stopped batch.
+export function traceBatchState(results) {
+  if (results.some(result => result.verdict === 'running')) return 'running';
+  if (results.length === 3 && results.every(result => result.verdict === 'manual')) return 'complete';
+  if (results.some(result => result.verdict === 'cancelled' || result.verdict === 'skipped')) return 'cancelled';
+  if (results.some(result => result.verdict === 'unavailable')) return 'failed';
+  return 'incomplete';
 }
