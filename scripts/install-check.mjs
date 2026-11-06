@@ -3,10 +3,9 @@ import path from 'node:path';
 import os from 'node:os';
 import {spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
+import {hostTarget} from '../plugin/platform.mjs';
 const root=path.resolve(import.meta.dirname,'..');
-const platform={win32:'windows'}[process.platform]||process.platform;
-const arch={x64:'amd64',arm64:'arm64'}[process.arch];
-const suffix=platform==='windows'?'.exe':'';
+const {goos:platform,goarch:arch,suffix}=hostTarget();
 const name=`dsh-intelligence-check-${platform}-${arch}`;
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'quality-install-'));
 try{

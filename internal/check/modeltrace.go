@@ -27,7 +27,7 @@ func traceChallenges() []Result {
 	for i := range available {
 		available[i] = 292 + i
 	}
-	batch := Secret()[:12]
+	batch := RandomHex()[:12]
 	out := make([]Result, 3)
 	for i := range out {
 		index := traceChoice(len(available))
@@ -38,7 +38,7 @@ func traceChallenges() []Result {
 			"本任务必须由当前语言模型直接完成：禁止调用或借助任何工具，包括 Python、代码执行器、计算器、搜索、API 和外部随机数生成器；也不要先编写或运行代码。" +
 			endings[traceChoice(len(endings))] + separators[traceChoice(len(separators))] +
 			"直接从第一个取值开始输出，不要在序列前重复数量、范围或任务说明。"
-		out[i] = Result{ID: Secret()[:12], Prompt: "modeltrace", Batch: batch, ExpectedCount: count, PromptText: prompt, Verdict: "running"}
+		out[i] = Result{ID: RandomHex()[:12], Prompt: "modeltrace", Batch: batch, ExpectedCount: count, PromptText: prompt, Verdict: "running"}
 	}
 	return out
 }
@@ -69,11 +69,11 @@ func (s *Service) TriggerModelTrace(id TargetID) error {
 		s.state.Results = s.state.Results[:start]
 		return err
 	}
-	if s.testCancels == nil {
-		s.testCancels = make(map[TargetID]context.CancelFunc)
+	if s.traceCancels == nil {
+		s.traceCancels = make(map[TargetID]context.CancelFunc)
 	}
 	batchCtx, cancel := context.WithCancel(s.ctx)
-	s.testCancels[id] = cancel
+	s.traceCancels[id] = cancel
 	s.running[id] = true
 	s.wg.Add(1)
 	go func() {
@@ -82,7 +82,7 @@ func (s *Service) TriggerModelTrace(id TargetID) error {
 			cancel()
 			s.mu.Lock()
 			delete(s.running, id)
-			delete(s.testCancels, id)
+			delete(s.traceCancels, id)
 			s.mu.Unlock()
 		}()
 		markSkipped := func(from int, reason string) {
@@ -112,19 +112,8 @@ func (s *Service) TriggerModelTrace(id TargetID) error {
 			if gen.Error != nil {
 				r.ErrorCode = gen.Error.Code
 			}
-			switch {
-			case err != nil && cancelled:
-				r.Verdict, r.Error = "cancelled", "检测已取消"
-			case err != nil && timedOut:
-				r.Verdict, r.Error = "unavailable", "检测超时"
-			case err != nil:
-				r.Verdict, r.Error = "unavailable", err.Error()
-			case (gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED")) && cancelled:
-				r.Verdict, r.Error = "cancelled", "检测已取消"
-			case gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED"):
-				r.Verdict, r.Error = "unavailable", "检测已取消"
-			case gen.Finish == "error" || gen.Error != nil:
-				r.Verdict, r.Error = "unavailable", generationFailure(gen)
+			if verdict, message, failed := classifyGenerationFailure(gen, err, "cancelled", cancelled, timedOut); failed {
+				r.Verdict, r.Error = verdict, message
 			}
 			s.mu.Lock()
 			s.state.Results[start+i] = r

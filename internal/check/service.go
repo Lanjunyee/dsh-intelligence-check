@@ -76,33 +76,53 @@ type Result struct {
 	ReviewedAt    time.Time `json:"reviewed_at,omitempty"`
 }
 
+// clearedUsage keeps the request budget of deleted records. The nested maps
+// preserve the existing JSON shape: day -> provider -> model -> count.
+type clearedUsage map[string]map[string]map[string]int
+
+func (u clearedUsage) add(day string, id TargetID) {
+	if u[day] == nil {
+		u[day] = make(map[string]map[string]int)
+	}
+	if u[day][id.Provider] == nil {
+		u[day][id.Provider] = make(map[string]int)
+	}
+	u[day][id.Provider][id.Model]++
+}
+
+func (u clearedUsage) count(day string, id TargetID) int {
+	return u[day][id.Provider][id.Model]
+}
+
 type State struct {
-	Config       Config                               `json:"config"`
-	Targets      []Target                             `json:"targets"`
-	Results      []Result                             `json:"results"`
-	ClearedUsage map[string]map[string]map[string]int `json:"cleared_usage,omitempty"`
+	Config       Config       `json:"config"`
+	Targets      []Target     `json:"targets"`
+	Results      []Result     `json:"results"`
+	ClearedUsage clearedUsage `json:"cleared_usage,omitempty"`
 }
 
 // Transport is defined in transport.go. The plugin forwards generation to the
 // DSH host bridge; model catalog membership arrives separately.
 
 type Service struct {
-	mu          sync.Mutex
-	state       State
-	catalog     []Model
-	running     map[TargetID]bool
-	testCancels map[TargetID]context.CancelFunc
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
-	autoWake    chan struct{}
-	autoDone    chan struct{}
-	store       *Store
-	transport   Transport
-	health      string
+	mu           sync.Mutex
+	state        State
+	catalog      []Model
+	running      map[TargetID]bool
+	testCancels  map[TargetID]context.CancelFunc
+	traceCancels map[TargetID]context.CancelFunc
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	autoWake     chan struct{}
+	autoDone     chan struct{}
+	store        *Store
+	transport    Transport
+	health       string
 }
 
-func Secret() string {
+// RandomHex returns a random identifier used for tokens and record IDs.
+func RandomHex() string {
 	var b [24]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		panic(err)
@@ -381,7 +401,7 @@ func (s *Service) ClearResults(ids []string) error {
 	}
 	previous, _ := json.Marshal(s.state)
 	if s.state.ClearedUsage == nil {
-		s.state.ClearedUsage = make(map[string]map[string]map[string]int)
+		s.state.ClearedUsage = make(clearedUsage)
 	}
 	kept := make([]Result, 0, len(s.state.Results))
 	for _, result := range s.state.Results {
@@ -394,14 +414,7 @@ func (s *Service) ClearResults(ids []string) error {
 			continue
 		}
 		day := result.Time.UTC().Format("2006-01-02")
-		if s.state.ClearedUsage[day] == nil {
-			s.state.ClearedUsage[day] = make(map[string]map[string]int)
-		}
-		byProvider := s.state.ClearedUsage[day]
-		if byProvider[result.Provider] == nil {
-			byProvider[result.Provider] = make(map[string]int)
-		}
-		byProvider[result.Provider][result.Model]++
+		s.state.ClearedUsage.add(day, TargetID{Provider: result.Provider, Model: result.Model})
 	}
 	s.state.Results = kept
 	if err := s.store.Save(s.state); err != nil {
@@ -440,7 +453,7 @@ func (s *Service) Trigger(id TargetID, prompt string) error {
 }
 
 func (s *Service) dayCountLocked(id TargetID, day string) int {
-	count := s.state.ClearedUsage[day][id.Provider][id.Model]
+	count := s.state.ClearedUsage.count(day, id)
 	for _, r := range s.state.Results {
 		if r.Provider == id.Provider && r.Model == id.Model && r.Verdict != "skipped" && r.Time.UTC().Format("2006-01-02") == day {
 			count++
@@ -460,9 +473,40 @@ func (s *Service) CancelTest(id TargetID) error {
 	return nil
 }
 
-// CancelModelTrace shares the per-target cancellation slot with quality checks;
-// a target can only have one active run at a time.
-func (s *Service) CancelModelTrace(id TargetID) error { return s.CancelTest(id) }
+// CancelModelTrace only cancels an actual ModelTrace batch. Quality checks keep
+// their own cancellation slot so a UI control for one run cannot abort the other.
+func (s *Service) CancelModelTrace(id TargetID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cancel := s.traceCancels[id]
+	if cancel == nil {
+		return errors.New("该模型没有可取消的模型归因批次")
+	}
+	cancel()
+	return nil
+}
+
+// classifyGenerationFailure maps a host call failure to a record state. The
+// callers keep their own success semantics: quality checks grade the answer,
+// while ModelTrace keeps raw answers for attribution.
+func classifyGenerationFailure(gen Generation, err error, cancelVerdict string, cancelled, timedOut bool) (verdict, message string, failed bool) {
+	aborted := gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED")
+	switch {
+	case err != nil && cancelled:
+		return cancelVerdict, "检测已取消", true
+	case err != nil && timedOut:
+		return "unavailable", "检测超时", true
+	case err != nil:
+		return "unavailable", err.Error(), true
+	case aborted && cancelled:
+		return cancelVerdict, "检测已取消", true
+	case aborted:
+		return "unavailable", "检测已取消", true
+	case gen.Finish == "error" || gen.Error != nil:
+		return "unavailable", generationFailure(gen), true
+	}
+	return "", "", false
+}
 
 func (s *Service) run(ctx context.Context, id TargetID, p Prompt) {
 	defer s.wg.Done()
@@ -474,7 +518,7 @@ func (s *Service) run(ctx context.Context, id TargetID, p Prompt) {
 			s.mu.Unlock()
 			break
 		}
-		r := Result{ID: Secret()[:12], Provider: id.Provider, Model: id.Model, Prompt: p.ID, PromptText: p.Text, Time: time.Now(), Verdict: "running"}
+		r := Result{ID: RandomHex()[:12], Provider: id.Provider, Model: id.Model, Prompt: p.ID, PromptText: p.Text, Time: time.Now(), Verdict: "running"}
 		s.state.Results = append(s.state.Results, r)
 		idx := len(s.state.Results) - 1
 		err := s.store.Save(s.state)
@@ -494,24 +538,16 @@ func (s *Service) run(ctx context.Context, id TargetID, p Prompt) {
 		if gen.Error != nil {
 			r.ErrorCode = gen.Error.Code
 		}
-		switch {
-		case err != nil:
-			r.Verdict = "unavailable"
-			r.Error = err.Error()
-			if errors.Is(ctx.Err(), context.Canceled) {
-				r.Error, r.Finish = "检测已取消", "aborted"
-			} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				r.Error = "检测超时"
+		if verdict, message, failed := classifyGenerationFailure(gen, err, "unavailable", errors.Is(ctx.Err(), context.Canceled), errors.Is(ctx.Err(), context.DeadlineExceeded)); failed {
+			r.Verdict, r.Error = verdict, message
+			if err != nil && errors.Is(ctx.Err(), context.Canceled) {
+				r.Finish = "aborted"
 			}
-		case gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED"):
-			r.Verdict, r.Error = "unavailable", "检测已取消"
-		case gen.Finish == "error" || gen.Error != nil:
-			r.Verdict, r.Error = "unavailable", generationFailure(gen)
-		case strings.TrimSpace(gen.Answer) == "":
+		} else if strings.TrimSpace(gen.Answer) == "" {
 			r.Verdict, r.Error = "empty", "空回答"
-		case gen.Finish == "max-tokens":
+		} else if gen.Finish == "max-tokens" {
 			r.Verdict, r.Error = "truncated", "回答被截断"
-		default:
+		} else {
 			r.Verdict = Grade(p.ID, gen.Answer)
 		}
 		s.mu.Lock()

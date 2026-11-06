@@ -1,24 +1,19 @@
 import assert from 'node:assert/strict';
-import {execFileSync, spawn, spawnSync} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {existsSync} from 'node:fs';
-import {mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
+import {readFile, rm, writeFile} from 'node:fs/promises';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
+import {backendBinary, createDshHarness, getState, openConsoleSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
 
-const root = path.resolve(import.meta.dirname, '..');
-const dsh = process.env.DSH_BINARY || (existsSync('/usr/local/bin/dsh') ? '/usr/local/bin/dsh' : 'dsh');
-const suffix = process.platform === 'win32' ? '.exe' : '';
-const localBinary = path.join(root, 'bin', `quality-check${suffix}`);
-const platformBinary = path.join(root, 'bin', `quality-check-${({win32: 'windows'})[process.platform] || process.platform}-${({x64: 'amd64', arm64: 'arm64'})[process.arch] || process.arch}${suffix}`);
-const backend = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY || (existsSync(localBinary) ? localBinary : platformBinary);
-const packageSpec = process.env.DSH_PLUGIN_PACKAGE || root;
+const {home, work, env, hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
+  prefix: 'dsh-ic',
+  env: {DSH_IC_LOCAL_KEY: 'local-test-key'},
+});
+const backend = backendBinary();
+const packageSpec = process.env.DSH_PLUGIN_PACKAGE || path.resolve(import.meta.dirname, '..');
 assert.ok(existsSync(backend), `缺少后台二进制，请先构建：go build -o bin/quality-check ./cmd/quality-check（或设置 DSH_INTELLIGENCE_CHECK_TEST_BINARY）`);
-const home = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-home-'));
-const work = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-work-'));
-const env = {...process.env, DSH_HOME: home, DSH_IC_LOCAL_KEY: 'local-test-key'};
-const hosts = [];
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const bundledPlaywright = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
@@ -45,10 +40,6 @@ const mock = http.createServer(async (request, response) => {
 await new Promise(resolve => mock.listen(0, '127.0.0.1', resolve));
 const mockPort = mock.address().port;
 
-function dshRun(args) {
-  return spawnSync(dsh, args, {env, cwd: work, encoding: 'utf8', timeout: 180000});
-}
-
 function providers() {
   const provider = name => `      ${name}:
         displayName: ${name === 'fixture-one' ? 'Fixture One' : 'Fixture Two'}
@@ -67,26 +58,6 @@ function providers() {
   return `${provider('fixture-one')}\n${provider('fixture-two')}`;
 }
 
-async function installProfile(name) {
-  const init = dshRun(['--profile', name, '--from-default-profile', 'web', '--dump-config']);
-  assert.equal(init.status, 0, init.stdout + init.stderr);
-  const added = dshRun(['plugin', '--profile', name, 'add', packageSpec]);
-  assert.equal(added.status, 0, added.stdout + added.stderr);
-  const pluginConfig = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
-    ? `- id: dsh-intelligence-check\n  config:\n    binaryPath: ${JSON.stringify(backend)}\n`
-    : '';
-  await writeFile(path.join(home, 'profiles', name, 'cordis.patch.yml'),
-    `- id: llm-pi-ai
-  config:
-    providers:
-${providers()}
-- id: agent-default-model
-  config:
-    provider: fixture-one
-    model: shared-model
-${pluginConfig}`);
-}
-
 async function uninstallProfile(name) {
   const removed = dshRun(['plugin', '--profile', name, 'remove', 'dsh-intelligence-check']);
   assert.equal(removed.status, 0, removed.stdout + removed.stderr);
@@ -98,90 +69,36 @@ async function uninstallProfile(name) {
   assert.ok(!dump.stdout.includes('# == dsh-intelligence-check'), '卸载后配置仍包含插件层');
 }
 
-async function bootProfile(name) {
-  const child = spawn(dsh, ['--profile', name, '--no-open', '--port', '0'], {
-    env, cwd: work, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let output = '';
-  let errors = '';
-  let login = '';
-  const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`profile ${name} 启动超时：${errors.slice(-1000)}`)), 45000);
-    const check = () => {
-      login ||= output.match(/dsh web: (http:\/\/\S+)/)?.[1] || '';
-      if (login && (output + errors).includes('[dsh-intelligence-check] backend ready')) {
-        clearTimeout(timer);
-        resolve();
-      }
-    };
-    child.stdout.on('data', chunk => {
-      output += chunk;
-      check();
-    });
-    child.stderr.on('data', chunk => {
-      errors += chunk;
-      check();
-    });
-    child.once('exit', code => {
-      clearTimeout(timer);
-      reject(new Error(`profile ${name} 提前退出（${code}）：${errors.slice(-1000)}`));
-    });
-  });
-  const host = {name, child, ready, login: () => login, origin: () => new URL(login).origin};
-  hosts.push(host);
-  await ready;
-  return host;
-}
-
-async function cookieJar(response) {
-  const values = response.headers.getSetCookie?.() || [response.headers.get('set-cookie')];
-  return values.filter(Boolean).map(value => value.split(';')[0]).join('; ');
-}
-
-async function hostSession(origin) {
-  const login = hosts.find(host => host.origin() === origin).login();
-  const response = await fetch(login, {redirect: 'manual'});
-  assert.equal(response.status, 303, '宿主登录链接未建立浏览器会话');
-  return cookieJar(response);
+function profilePatch() {
+  return `- id: llm-pi-ai
+  config:
+    providers:
+${providers()}
+- id: agent-default-model
+  config:
+    provider: fixture-one
+    model: shared-model
+${pluginConfigOverride()}`;
 }
 
 async function openEntry(host) {
-  const origin = host.origin();
-  const cookies = await hostSession(origin);
-  const refused = await fetch(origin + '/dsh-intelligence-check', {redirect: 'manual'});
-  assert.equal(refused.status, 401, '宿主入口未要求登录');
-  const entry = await fetch(origin + '/dsh-intelligence-check', {redirect: 'manual', headers: {cookie: cookies}});
-  assert.equal(entry.status, 302, '宿主入口未跳转控制台');
-  const location = entry.headers.get('location');
-  assert.match(location, /\/open\/[0-9a-f]{48}$/);
-  const opened = await fetch(location, {redirect: 'manual'});
-  assert.equal(opened.status, 303, '控制台管理链接未完成交换');
-  const session = await cookieJar(opened);
-  const state = await fetch(new URL('/api/state', location), {headers: {cookie: session}});
-  assert.equal(state.status, 200, '控制台状态不可读取');
-  return {location, session, state: (await state.json()).state};
+  const {console, payload} = await openConsoleSession(host, {requireLogin: true});
+  assert.match(console.location, /\/open\/[0-9a-f]{48}$/);
+  return {location: console.location, session: console.session, state: payload.state};
 }
 
 async function addTarget(console, provider, model) {
-  const response = await fetch(new URL('/api/target', console.location), {
-    method: 'POST',
-    headers: {cookie: console.session, 'content-type': 'application/json'},
-    body: JSON.stringify({provider, model, enabled: false}),
-  });
-  assert.equal(response.status, 200, await response.text());
+  const {status, text} = await postJSON(console, '/api/target', {provider, model, enabled: false});
+  assert.equal(status, 200, text);
 }
 
 async function post(console, pathname, body) {
-  const response = await fetch(new URL(pathname, console.location), {
-    method: 'POST',
-    headers: {cookie: console.session, 'content-type': 'application/json'},
-    body: JSON.stringify(body),
-  });
-  assert.equal(response.status, 200, await response.text());
+  const {status, text} = await postJSON(console, pathname, body);
+  assert.equal(status, 200, text);
 }
 
 async function stateOf(console) {
-  return (await (await fetch(new URL('/api/state', console.location), {headers: {cookie: console.session}})).json()).state;
+  return (await getState(console)).state;
 }
 
 async function waitResult(console) {
@@ -212,13 +129,6 @@ async function waitForCatalog(console) {
   throw new Error('宿主模型目录未包含两个受控 provider 的同名模型');
 }
 
-async function stopHost(host) {
-  if (host.child.exitCode !== null) return;
-  const exited = new Promise(resolve => host.child.once('exit', resolve));
-  host.child.kill('SIGTERM');
-  await Promise.race([exited, wait(6000)]);
-}
-
 function processes(dataDir) {
   return execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
     .split('\n').filter(line => line.includes(dataDir));
@@ -229,8 +139,8 @@ let uiChecked = false;
 try {
   const version = dshRun(['--version']).stdout.trim();
   assert.match(version, /^\d+\.\d+\.\d+/);
-  await installProfile('check-a');
-  await installProfile('check-b');
+  await installProfile('check-a', profilePatch());
+  await installProfile('check-b', profilePatch());
   let a = await bootProfile('check-a');
   const b = await bootProfile('check-b');
   const dataA = path.join(home, 'profiles', 'check-a', 'dsh-intelligence-check');

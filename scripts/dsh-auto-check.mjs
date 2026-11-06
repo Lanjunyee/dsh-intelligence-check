@@ -1,24 +1,20 @@
 import assert from 'node:assert/strict';
-import {execFileSync, spawn, spawnSync} from 'node:child_process';
+import {execFileSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {rm} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
+import {backendBinary, createDshHarness, getState, openConsoleSession, pluginConfigOverride, postJSON} from './dsh-harness.mjs';
 
 // Real isolated DSH profile plus a controlled host model service. Automatic
 // checks are exercised only through the host bridge; no business conversation
 // is ever started. A one second interval stands in for the production default.
-const root = path.resolve(import.meta.dirname, '..');
-const dsh = process.env.DSH_BINARY || (existsSync('/usr/local/bin/dsh') ? '/usr/local/bin/dsh' : 'dsh');
-const suffix = process.platform === 'win32' ? '.exe' : '';
-const binary = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY || path.join(root, 'bin', `quality-check${suffix}`);
-const packageSpec = process.env.DSH_PLUGIN_PACKAGE || root;
-assert.ok(existsSync(binary), '缺少后台二进制：请先 go build -o bin/quality-check ./cmd/quality-check');
-const home = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-auto-home-'));
-const work = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-auto-work-'));
-const env = {...process.env, DSH_HOME: home};
+const {home, work, env, hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
+  prefix: 'dsh-ic-auto',
+  env: {DSH_IC_LOCAL_KEY: 'local-dummy-key'},
+});
+assert.ok(existsSync(backendBinary()), '缺少后台二进制：请先 go build -o bin/quality-check ./cmd/quality-check');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 const bundledPlaywright = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
 const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundledPlaywright) ? bundledPlaywright : '');
@@ -80,22 +76,9 @@ const controlled = http.createServer(async (request, response) => {
 await new Promise(resolve => controlled.listen(0, '127.0.0.1', resolve));
 const port = controlled.address().port;
 
-const hosts = [];
-function dshRun(args) {
-  return spawnSync(dsh, args, {env, cwd: work, encoding: 'utf8', timeout: 180000});
-}
-
-async function installProfile(name) {
-  const init = dshRun(['--profile', name, '--from-default-profile', 'web', '--dump-config']);
-  assert.equal(init.status, 0, init.stdout + init.stderr);
-  const added = dshRun(['plugin', '--profile', name, 'add', packageSpec]);
-  assert.equal(added.status, 0, added.stdout + added.stderr);
+function autoPatch() {
   const models = ['watched-model', 'unwatched-model', 'slow-model', 'budget-model', 'exit-model'];
-  const pluginConfig = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
-    ? `- id: dsh-intelligence-check\n  config:\n    binaryPath: ${JSON.stringify(binary)}\n`
-    : '';
-  await writeFile(path.join(home, 'profiles', name, 'cordis.patch.yml'),
-    `- id: llm-pi-ai
+  return `- id: llm-pi-ai
   config:
     providers:
       auto-provider:
@@ -116,78 +99,22 @@ ${models.map(model => `          - id: ${model}
   config:
     provider: auto-provider
     model: watched-model
-${pluginConfig}`);
+${pluginConfigOverride()}`;
+}
+
+async function installAutoProfile(name) {
+  await installProfile(name, autoPatch());
   return path.join(home, 'profiles', name, 'dsh-intelligence-check');
 }
 
-async function bootProfile(name) {
-  const child = spawn(dsh, ['--profile', name, '--no-open', '--port', '0'], {
-    env: {...env, DSH_IC_LOCAL_KEY: 'local-dummy-key'}, cwd: work, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let output = '';
-  let errors = '';
-  let login = '';
-  const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`profile ${name} 启动超时：${errors.slice(-1500)}`)), 60000);
-    const check = () => {
-      login ||= output.match(/dsh web: (http:\/\/\S+)/)?.[1] || '';
-      if (login && (output + errors).includes('[dsh-intelligence-check] backend ready')) {
-        clearTimeout(timer);
-        resolve();
-      }
-    };
-    child.stdout.on('data', chunk => { output += chunk; check(); });
-    child.stderr.on('data', chunk => { errors += chunk; check(); });
-    child.once('exit', code => {
-      clearTimeout(timer);
-      reject(new Error(`profile ${name} 提前退出（${code}）：${errors.slice(-1500)}`));
-    });
-  });
-  const host = {name, child, login: () => login, origin: () => new URL(login).origin};
-  hosts.push(host);
-  await ready;
-  return host;
-}
-
-async function stopHost(host) {
-  if (host.child.exitCode !== null) return;
-  const exited = new Promise(resolve => host.child.once('exit', resolve));
-  host.child.kill('SIGTERM');
-  await Promise.race([exited, wait(10000)]);
-}
-
-function cookies(response) {
-  return (response.headers.getSetCookie?.() || [response.headers.get('set-cookie')])
-    .filter(Boolean).map(value => value.split(';')[0]).join('; ');
-}
-
 async function openConsole(host) {
-  const login = await fetch(host.login(), {redirect: 'manual'});
-  assert.equal(login.status, 303, '宿主登录链接未建立浏览器会话');
-  const session = cookies(login);
-  const entry = await fetch(host.origin() + '/dsh-intelligence-check', {redirect: 'manual', headers: {cookie: session}});
-  assert.equal(entry.status, 302, '宿主入口未跳转控制台');
-  const location = entry.headers.get('location');
-  const opened = await fetch(location, {redirect: 'manual'});
-  assert.equal(opened.status, 303, '控制台管理链接未完成交换');
-  const console = {location, session: cookies(opened)};
-  const state = await (await fetch(new URL('/api/state', location), {headers: {cookie: console.session}})).json();
-  assert.ok(state.catalog.some(entry => entry.provider === 'auto-provider' && entry.model === 'watched-model'));
+  const {console, payload} = await openConsoleSession(host);
+  assert.ok(payload.catalog.some(entry => entry.provider === 'auto-provider' && entry.model === 'watched-model'));
   return console;
 }
 
-async function post(client, pathname, body) {
-  const response = await fetch(new URL(pathname, client.location), {
-    method: 'POST',
-    headers: {cookie: client.session, 'content-type': 'application/json'},
-    body: JSON.stringify(body),
-  });
-  return {status: response.status, text: await response.text()};
-}
-
-async function stateOf(client) {
-  return (await (await fetch(new URL('/api/state', client.location), {headers: {cookie: client.session}})).json());
-}
+const post = (client, pathname, body) => postJSON(client, pathname, body);
+const stateOf = client => getState(client);
 
 async function configure(client, autoEnabled, interval = 1, dailyLimit = 10000) {
   const result = await post(client, '/api/config', {
@@ -259,7 +186,7 @@ function backendProcesses(dataDir) {
 try {
   const version = dshRun(['--version']).stdout.trim();
   assert.match(version, /^\d+\.\d+\.\d+/);
-  const dataDir = await installProfile('auto-check');
+  const dataDir = await installAutoProfile('auto-check');
   let host = await bootProfile('auto-check');
   let client = await openConsole(host);
   let payload = await stateOf(client);

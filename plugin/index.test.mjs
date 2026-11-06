@@ -4,14 +4,13 @@ import {existsSync, mkdtempSync, rmSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {apply} from './index.mjs';
+import {hostTarget} from './platform.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const platform = ({win32: 'windows'})[process.platform] || process.platform;
-const arch = ({x64: 'amd64', arm64: 'arm64'})[process.arch] || process.arch;
-const suffix = platform === 'windows' ? '.exe' : '';
+const {goos, goarch, suffix} = hostTarget();
 const local = path.join(root, 'bin', `quality-check${suffix}`);
 const binaryPath = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY ||
-  (existsSync(local) ? local : path.join(root, 'bin', `quality-check-${platform}-${arch}${suffix}`));
+  (existsSync(local) ? local : path.join(root, 'bin', `quality-check-${goos}-${goarch}${suffix}`));
 
 const catalog = {
   'provider-one': [{provider: 'provider-one', id: 'shared-model', name: 'Shared Model'}],

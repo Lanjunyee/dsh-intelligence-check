@@ -60,7 +60,7 @@ func run(dir, addr, binary string, owned bool, bridge, bridgeToken string) error
 	if err != nil {
 		return err
 	}
-	token := check.Secret()
+	token := check.RandomHex()
 	origin := "http://" + ln.Addr().String()
 	access := check.NewAccess(token, origin)
 	console := check.NewConsole(access, origin, dir, binary)

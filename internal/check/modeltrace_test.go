@@ -65,6 +65,99 @@ func TestModelTraceCancelAbortsActiveCallAndSkipsUnstarted(t *testing.T) {
 	}
 }
 
+func TestCancelModelTraceLeavesRunningQualityCheckAlone(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	transport := &fakeTransport{generate: func(ctx context.Context, _ TargetID, _ string, _ func(string), _ GenerateParams) (Generation, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		select {
+		case <-release:
+			return Generation{Answer: "46.24 inches", Usage: usage(17), Finish: "stop"}, nil
+		case <-ctx.Done():
+			return Generation{}, ctx.Err()
+		}
+	}}
+	s := fixtureWithTransport(t, transport)
+	if err := s.Configure(Config{DailyLimit: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTarget(id, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Trigger(id, "milk"); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	r := httptest.NewRequest("POST", "/api/action", strings.NewReader(`{"provider":"provider-a","model":"solo","action":"cancel-modeltrace"}`))
+	r.Header.Set("Authorization", "Bearer secret")
+	w := httptest.NewRecorder()
+	s.Handler("secret").ServeHTTP(w, r)
+	if w.Code != 400 {
+		t.Fatalf("cancel-modeltrace accepted without a ModelTrace batch: %d %s", w.Code, w.Body.String())
+	}
+	state, _ := s.Snapshot()
+	if len(state.Results) != 1 || state.Results[0].Verdict != "running" {
+		t.Fatalf("cancel-modeltrace touched the quality check: %+v", state.Results)
+	}
+	close(release)
+	waitIdle(t, s)
+	state, _ = s.Snapshot()
+	if len(state.Results) != 1 || state.Results[0].Verdict != "passed" || state.Results[0].Answer != "46.24 inches" {
+		t.Fatalf("quality check was cancelled by ModelTrace cancel: %+v", state.Results)
+	}
+}
+
+func TestCancelQualityCheckLeavesRunningModelTraceBatchAlone(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	transport := &fakeTransport{generate: func(ctx context.Context, _ TargetID, _ string, _ func(string), _ GenerateParams) (Generation, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		select {
+		case <-release:
+			return Generation{Answer: "1,2,3", Usage: usage(5), Finish: "stop"}, nil
+		case <-ctx.Done():
+			return Generation{}, ctx.Err()
+		}
+	}}
+	s := fixtureWithTransport(t, transport)
+	if err := s.Configure(Config{DailyLimit: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetTarget(id, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TriggerModelTrace(id); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	r := httptest.NewRequest("POST", "/api/action", strings.NewReader(`{"provider":"provider-a","model":"solo","action":"cancel-test"}`))
+	r.Header.Set("Authorization", "Bearer secret")
+	w := httptest.NewRecorder()
+	s.Handler("secret").ServeHTTP(w, r)
+	if w.Code != 400 {
+		t.Fatalf("cancel-test accepted without a quality check: %d %s", w.Code, w.Body.String())
+	}
+	close(release)
+	waitIdle(t, s)
+	state, _ := s.Snapshot()
+	if len(state.Results) != 3 {
+		t.Fatalf("ModelTrace batch lost entries: %+v", state.Results)
+	}
+	for _, result := range state.Results {
+		if result.Verdict != "manual" || result.Answer != "1,2,3" {
+			t.Fatalf("cancel-test interrupted the ModelTrace batch: %+v", result)
+		}
+	}
+}
+
 func TestModelTraceFailureKeepsEveryEntryExplainable(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
 	var calls atomic.Int32

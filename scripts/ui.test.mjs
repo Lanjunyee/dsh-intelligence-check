@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { usageLabel, usageTotals, traceBatchState } from '../internal/check/web/assets/ui.js';
+import {readFileSync} from 'node:fs';
+import { usageLabel, usageTotals, traceBatchState, traceRunning } from '../internal/check/web/assets/ui.js';
 
 test('ModelTrace batch state explains complete, failed and cancelled batches', () => {
   const manual = Array.from({length: 3}, () => ({verdict: 'manual'}));
@@ -12,6 +13,18 @@ test('ModelTrace batch state explains complete, failed and cancelled batches', (
   assert.equal(traceBatchState([{verdict: 'skipped'}, {verdict: 'skipped'}, {verdict: 'skipped'}]), 'cancelled');
   assert.equal(traceBatchState([{verdict: 'manual'}, {verdict: 'skipped'}]), 'cancelled');
   assert.equal(traceBatchState([{verdict: 'manual'}, {verdict: 'manual'}]), 'incomplete');
+});
+
+test('expired preview sessions point at the DSH entry', () => {
+  const source = readFileSync(new URL('../internal/check/web/assets/html-preview.js', import.meta.url), 'utf8');
+  assert.match(source, /DeepSeek Harness/);
+  assert.doesNotMatch(source, /Magpie/);
+});
+
+test('ModelTrace cancel availability ignores quality checks', () => {
+  assert.equal(traceRunning([{prompt: 'milk', verdict: 'running'}]), false);
+  assert.equal(traceRunning([{prompt: 'milk', verdict: 'running'}, {prompt: 'modeltrace', verdict: 'running'}]), true);
+  assert.equal(traceRunning([{prompt: 'modeltrace', verdict: 'manual'}]), false);
 });
 
 test('missing usage is shown as unavailable, never as zero', () => {

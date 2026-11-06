@@ -36,7 +36,7 @@ func (a *Access) Ticket() string {
 			delete(a.tickets, k)
 		}
 	}
-	t := Secret()
+	t := RandomHex()
 	a.tickets[t] = now.Add(10 * time.Minute)
 	return t
 }
@@ -48,7 +48,7 @@ func (a *Access) Exchange(ticket string) (string, bool) {
 	if !ok || time.Now().After(until) {
 		return "", false
 	}
-	s := Secret()
+	s := RandomHex()
 	a.sessions[s] = time.Now().Add(30 * time.Minute)
 	return s, true
 }

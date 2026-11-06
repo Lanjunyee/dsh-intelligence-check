@@ -80,10 +80,12 @@ func TestManualMilkThroughWebPersistsAfterRestart(t *testing.T) {
 	}
 }
 
-// Unwritable gate locations must not affect checks or persistence.
-func TestMissingOrUnwritableGatePathDoesNotAffectSaving(t *testing.T) {
+// A legacy Magpie gate artifact must not affect checks or persistence: the
+// migration keeps its path untouched and never writes another business gate.
+func TestLegacyArtifactPathDoesNotAffectSaving(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.Mkdir(filepath.Join(dir, "gate.middleware.js"), 0500); err != nil {
+	legacyArtifact := filepath.Join(dir, "gate.middleware.js")
+	if err := os.Mkdir(legacyArtifact, 0500); err != nil {
 		t.Fatal(err)
 	}
 	s, err := New(dir)
@@ -106,9 +108,9 @@ func TestMissingOrUnwritableGatePathDoesNotAffectSaving(t *testing.T) {
 	if err := s.store.Load(&stored); err != nil || len(stored.Results) != 1 || stored.Results[0].Answer != "answer" {
 		t.Fatalf("record not persisted: %+v %v", stored.Results, err)
 	}
-	info, err := os.Stat(filepath.Join(dir, "gate.middleware.js"))
+	info, err := os.Stat(legacyArtifact)
 	if err != nil || !info.IsDir() {
-		t.Fatal("unexpected write to gate path")
+		t.Fatal("unexpected write to legacy artifact path")
 	}
 }
 

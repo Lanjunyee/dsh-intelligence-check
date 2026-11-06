@@ -67,7 +67,7 @@ async function startPreview() {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
       const message = await response.text();
-      if (response.status === 401) throw Error('管理会话已失效，请从 Magpie 插件重新打开控制台。');
+      if (response.status === 401) throw Error('管理会话已失效，请从 DeepSeek Harness 的 dsh-intelligence-check 入口重新打开控制台。');
       throw Error(/<!doctype|<html/i.test(message) ? `预览连接失败（HTTP ${response.status}）` : message.trim() || `预览加载失败（HTTP ${response.status}）`);
     }
     await response.body?.cancel();

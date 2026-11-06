@@ -1,23 +1,17 @@
 import assert from 'node:assert/strict';
-import {spawn, spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
-import {mkdtemp, rm, writeFile} from 'node:fs/promises';
+import {rm} from 'node:fs/promises';
 import http from 'node:http';
-import os from 'node:os';
-import path from 'node:path';
+import {backendBinary, createDshHarness, getState, openConsoleSession, postJSON, pluginConfigOverride} from './dsh-harness.mjs';
 
 // Real isolated DSH profile plus controlled host model services. This covers
 // the observable completion matrix introduced by #6 without a browser; the
 // console HTTP API used here is the same one the web console calls.
-const root = path.resolve(import.meta.dirname, '..');
-const dsh = process.env.DSH_BINARY || (existsSync('/usr/local/bin/dsh') ? '/usr/local/bin/dsh' : 'dsh');
-const suffix = process.platform === 'win32' ? '.exe' : '';
-const binary = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY || path.join(root, 'bin', `quality-check${suffix}`);
-const packageSpec = process.env.DSH_PLUGIN_PACKAGE || root;
-assert.ok(existsSync(binary), `缺少后台二进制：请先 go build -o bin/quality-check ./cmd/quality-check`);
-const home = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-life-home-'));
-const work = await mkdtemp(path.join(os.tmpdir(), 'dsh-ic-life-work-'));
-const env = {...process.env, DSH_HOME: home, DSH_IC_LOCAL_KEY: 'local-controlled-key'};
+const {home, work, env, hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
+  prefix: 'dsh-ic-life',
+  env: {DSH_IC_LOCAL_KEY: 'local-controlled-key'},
+});
+assert.ok(existsSync(backendBinary()), '缺少后台二进制：请先 go build -o bin/quality-check ./cmd/quality-check');
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function sse(response, {pieces, finish = 'stop', usage}) {
@@ -99,11 +93,6 @@ const one = await controlledService({
 }, {'slow-model': true});
 const two = await controlledService({'slow-model': complete});
 
-const hosts = [];
-function dshRun(args) {
-  return spawnSync(dsh, args, {env, cwd: work, encoding: 'utf8', timeout: 180000});
-}
-
 function provider(id, name, origin, models) {
   return `      ${id}:
         displayName: ${name}
@@ -121,16 +110,8 @@ ${models.map(model => `          - id: ${model}
             input: [text]`).join('\n')}`;
 }
 
-async function installProfile(name) {
-  const init = dshRun(['--profile', name, '--from-default-profile', 'web', '--dump-config']);
-  assert.equal(init.status, 0, init.stdout + init.stderr);
-  const added = dshRun(['plugin', '--profile', name, 'add', packageSpec]);
-  assert.equal(added.status, 0, added.stdout + added.stderr);
-  const pluginConfig = process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
-    ? `- id: dsh-intelligence-check\n  config:\n    binaryPath: ${JSON.stringify(binary)}\n`
-    : '';
-  await writeFile(path.join(home, 'profiles', name, 'cordis.patch.yml'),
-    `- id: llm-pi-ai
+function lifecyclePatch() {
+  return `- id: llm-pi-ai
   config:
     providers:
 ${provider('provider-one', 'Provider One', one.origin, ['complete-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model'])}
@@ -139,77 +120,23 @@ ${provider('provider-two', 'Provider Two', two.origin, ['slow-model'])}
   config:
     provider: provider-one
     model: complete-model
-${pluginConfig}`);
-}
-
-async function bootProfile(name) {
-  const child = spawn(dsh, ['--profile', name, '--no-open', '--port', '0'], {
-    env, cwd: work, stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  let output = '';
-  let errors = '';
-  let login = '';
-  const ready = new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`profile ${name} 启动超时：${errors.slice(-1000)}`)), 60000);
-    const check = () => {
-      login ||= output.match(/dsh web: (http:\/\/\S+)/)?.[1] || '';
-      if (login && (output + errors).includes('[dsh-intelligence-check] backend ready')) {
-        clearTimeout(timer);
-        resolve();
-      }
-    };
-    child.stdout.on('data', chunk => { output += chunk; check(); });
-    child.stderr.on('data', chunk => { errors += chunk; check(); });
-    child.once('exit', code => {
-      clearTimeout(timer);
-      reject(new Error(`profile ${name} 提前退出（${code}）：${errors.slice(-1000)}`));
-    });
-  });
-  const host = {name, child, login: () => login, origin: () => new URL(login).origin};
-  hosts.push(host);
-  await ready;
-  return host;
-}
-
-async function stopHost(host) {
-  if (host.child.exitCode !== null) return;
-  const exited = new Promise(resolve => host.child.once('exit', resolve));
-  host.child.kill('SIGTERM');
-  await Promise.race([exited, wait(8000)]);
-}
-
-function cookies(response) {
-  return (response.headers.getSetCookie?.() || [response.headers.get('set-cookie')])
-    .filter(Boolean).map(value => value.split(';')[0]).join('; ');
+${pluginConfigOverride()}`;
 }
 
 async function openConsole(host) {
-  const login = await fetch(host.login(), {redirect: 'manual'});
-  assert.equal(login.status, 303, '宿主登录链接未建立浏览器会话');
-  const session = cookies(login);
-  const entry = await fetch(host.origin() + '/dsh-intelligence-check', {redirect: 'manual', headers: {cookie: session}});
-  assert.equal(entry.status, 302, '宿主入口未跳转控制台');
-  const location = entry.headers.get('location');
-  const opened = await fetch(location, {redirect: 'manual'});
-  assert.equal(opened.status, 303, '控制台管理链接未完成交换');
-  const console = {location, session: cookies(opened)};
-  const state = await (await fetch(new URL('/api/state', location), {headers: {cookie: console.session}})).json();
-  assert.ok(state.catalog.some(entry => entry.provider === 'provider-one' && entry.model === 'complete-model'));
-  assert.ok(state.catalog.some(entry => entry.provider === 'provider-two' && entry.model === 'slow-model'));
+  const {console, payload} = await openConsoleSession(host);
+  assert.ok(payload.catalog.some(entry => entry.provider === 'provider-one' && entry.model === 'complete-model'));
+  assert.ok(payload.catalog.some(entry => entry.provider === 'provider-two' && entry.model === 'slow-model'));
   return console;
 }
 
 async function post(client, pathname, body) {
-  const response = await fetch(new URL(pathname, client.location), {
-    method: 'POST',
-    headers: {cookie: client.session, 'content-type': 'application/json'},
-    body: JSON.stringify(body),
-  });
-  assert.equal(response.status, 200, await response.text());
+  const {status, text} = await postJSON(client, pathname, body);
+  assert.equal(status, 200, text);
 }
 
 async function stateOf(client) {
-  return (await (await fetch(new URL('/api/state', client.location), {headers: {cookie: client.session}})).json()).state;
+  return (await getState(client)).state;
 }
 
 async function waitRecord(client, providerId, model, predicate, timeout = 30000) {
@@ -249,7 +176,7 @@ function total(record) {
 try {
   const version = dshRun(['--version']).stdout.trim();
   assert.match(version, /^\d+\.\d+\.\d+/);
-  await installProfile('lifecycle-check');
+  await installProfile('lifecycle-check', lifecyclePatch());
   let host = await bootProfile('lifecycle-check');
   let client = await openConsole(host);
 

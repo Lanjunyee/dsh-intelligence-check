@@ -92,7 +92,8 @@ func generationFailure(g Generation) string {
 	return "模型调用失败"
 }
 
-type bridgeEvent struct {	Type   string           `json:"type"`
+type bridgeEvent struct {
+	Type   string           `json:"type"`
 	Text   string           `json:"text,omitempty"`
 	Usage  *Usage           `json:"usage,omitempty"`
 	Reason string           `json:"reason,omitempty"`
@@ -100,7 +101,7 @@ type bridgeEvent struct {	Type   string           `json:"type"`
 }
 
 func (t *HostBridgeTransport) Generate(ctx context.Context, id TargetID, prompt string, progress func(string), params GenerateParams) (Generation, error) {
-	body, err := json.Marshal(bridgeRequest{RequestID: Secret()[:12], Target: id, Prompt: prompt, Params: params})
+	body, err := json.Marshal(bridgeRequest{RequestID: RandomHex()[:12], Target: id, Prompt: prompt, Params: params})
 	if err != nil {
 		return Generation{}, err
 	}

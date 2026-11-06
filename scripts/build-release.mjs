@@ -3,14 +3,15 @@ import { mkdir, mkdtemp, copyFile, readFile, writeFile, cp, rename, rm } from 'n
 import { createHash } from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
+import {PLATFORM_TARGETS, hostTarget} from '../plugin/platform.mjs';
 
 const root=path.resolve(import.meta.dirname,'..');
 const dist=path.join(root,'dist');
-const platforms=[['linux','amd64'],['linux','arm64'],['darwin','amd64'],['darwin','arm64'],['windows','amd64']];
+const platforms=PLATFORM_TARGETS;
 const {version}=JSON.parse(await readFile(path.join(root,'package.json'),'utf8'));
 const artifacts=[];
 await mkdir(dist,{recursive:true});
-for(const [goos,goarch] of platforms){
+for(const {goos,goarch} of platforms){
  const suffix=goos==='windows'?'.exe':'';
  const name=`quality-check-${goos}-${goarch}${suffix}`;
  const output=path.join(dist,name);
@@ -35,6 +36,7 @@ for(const [goos,goarch] of platforms){
 }
 await writeFile(path.join(dist,'manifest.json'),JSON.stringify({version,artifacts},null,2)+'\n');
 await writeFile(path.join(dist,'SHA256SUMS'),artifacts.map(item=>`${item.sha256}  ${item.name}`).join('\n')+'\n');
-const local=platforms.find(([os,arch])=>os===({win32:'windows'}[process.platform]||process.platform)&&arch===({x64:'amd64',arm64:'arm64'}[process.arch]));
-if(local){await mkdir(path.join(root,'bin'),{recursive:true});await copyFile(path.join(dist,`quality-check-${local[0]}-${local[1]}${local[0]==='windows'?'.exe':''}`),path.join(root,'bin',local[0]==='windows'?'quality-check.exe':'quality-check'));}
+const current=hostTarget();
+const local=platforms.find(target=>target.goos===current.goos&&target.goarch===current.goarch);
+if(local){await mkdir(path.join(root,'bin'),{recursive:true});await copyFile(path.join(dist,`quality-check-${local.goos}-${local.goarch}${local.goos==='windows'?'.exe':''}`),path.join(root,'bin',local.goos==='windows'?'quality-check.exe':'quality-check'));}
 console.log('Release bundles, platform binaries and SHA-256 checksums generated in dist/');

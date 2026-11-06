@@ -59,6 +59,11 @@ export function usageTotals(records) {
   }
   return { total, reported, missing };
 }
+// Only an actual ModelTrace entry can enable batch cancellation; a quality
+// check for the same target must not expose this control.
+export function traceRunning(results) {
+  return results.some(result => result.prompt === 'modeltrace' && result.verdict === 'running');
+}
 // ModelTrace has three entries per batch; unstarted entries explain a stopped batch.
 export function traceBatchState(results) {
   if (results.some(result => result.verdict === 'running')) return 'running';

@@ -136,19 +136,19 @@ func TestCatalogPushRequiresControlAndStateHasNoGatewayConfig(t *testing.T) {
 	}
 }
 
-type gatedTransport struct {
+type blockingTransport struct {
 	mu      sync.Mutex
 	started map[TargetID]chan struct{}
 	release map[TargetID]chan struct{}
 	answers map[TargetID]string
 }
 
-func (g *gatedTransport) Generate(ctx context.Context, id TargetID, _ string, _ func(string), _ GenerateParams) (Generation, error) {
-	g.mu.Lock()
-	started := g.started[id]
-	release := g.release[id]
-	answer := g.answers[id]
-	g.mu.Unlock()
+func (b *blockingTransport) Generate(ctx context.Context, id TargetID, _ string, _ func(string), _ GenerateParams) (Generation, error) {
+	b.mu.Lock()
+	started := b.started[id]
+	release := b.release[id]
+	answer := b.answers[id]
+	b.mu.Unlock()
 	if started != nil {
 		close(started)
 	}
@@ -165,7 +165,7 @@ func (g *gatedTransport) Generate(ctx context.Context, id TargetID, _ string, _ 
 func TestRunCancelAndBudgetUseProviderAndModelIdentity(t *testing.T) {
 	one := TargetID{Provider: "provider-one", Model: "shared-model"}
 	two := TargetID{Provider: "provider-two", Model: "shared-model"}
-	transport := &gatedTransport{
+	transport := &blockingTransport{
 		started: map[TargetID]chan struct{}{one: make(chan struct{}), two: make(chan struct{})},
 		release: map[TargetID]chan struct{}{one: make(chan struct{}), two: make(chan struct{})},
 		answers: map[TargetID]string{one: "46.24 inches", two: "46.24 inches"},
@@ -217,7 +217,7 @@ func TestRunCancelAndBudgetUseProviderAndModelIdentity(t *testing.T) {
 func TestBudgetAndDeleteUseCompositeIdentity(t *testing.T) {
 	one := TargetID{Provider: "provider-one", Model: "shared-model"}
 	two := TargetID{Provider: "provider-two", Model: "shared-model"}
-	transport := &gatedTransport{answers: map[TargetID]string{one: "46.24 inches", two: "46.24 inches"}}
+	transport := &blockingTransport{answers: map[TargetID]string{one: "46.24 inches", two: "46.24 inches"}}
 	s, err := NewWithTransport(t.TempDir(), transport)
 	if err != nil {
 		t.Fatal(err)

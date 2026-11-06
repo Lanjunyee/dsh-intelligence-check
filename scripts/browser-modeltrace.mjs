@@ -31,6 +31,37 @@ async function waitForBatch(page, provider) {
   }
 }
 
+async function selectTestTarget(page, provider) {
+  await page.locator('#tab-tests').click();
+  await page.evaluate(providerId => {
+    const select = document.querySelector('#model');
+    const option = [...select.options].find(item => item.textContent.includes(`${providerId} / shared-model`));
+    if (!option) throw new Error(`missing test target ${providerId}`);
+    select.value = option.value;
+    select.dispatchEvent(new Event('change', {bubbles: true}));
+  }, provider);
+}
+
+// A running quality check must not expose or accept ModelTrace cancellation.
+export async function verifyModelTraceDoesNotCancelQualityCheck({page}) {
+  await selectTestTarget(page, 'fixture-one');
+  await page.locator('#prompt').selectOption('milk');
+  await page.locator('#run').click();
+  await page.waitForFunction(() => document.querySelector('#testAnswer').getAttribute('aria-busy') === 'true', {}, {timeout: 20000});
+  const status = await page.evaluate(() => fetch('/api/action', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({provider: 'fixture-one', model: 'shared-model', action: 'cancel-modeltrace'}),
+  }).then(response => response.status));
+  assert.equal(status, 400, 'cancel-modeltrace 在无 ModelTrace 批次时被接受');
+  await selectTraceTarget(page, 'fixture-one');
+  await page.waitForFunction(() => document.querySelector('#traceRun').disabled, {}, {timeout: 15000});
+  assert.equal(await page.locator('#traceCancel').isVisible(), false, '质量检测运行时仍显示 ModelTrace 取消按钮');
+  await page.locator('#tab-tests').click();
+  await page.waitForFunction(() => document.querySelector('#answerMeta').textContent.includes('通过'), {}, {timeout: 30000});
+  assert.equal(await page.locator('#testAnswer').textContent(), '46.24 inches');
+}
+
 export async function verifyModelTrace({page, slow, one}) {
   // A complete batch keeps generation parameters, batch identity and raw answers,
   // and shows closed-set behavioural similarity rather than identity proof.
@@ -80,6 +111,12 @@ export async function verifyModelTrace({page, slow, one}) {
   await page.waitForFunction(() => document.querySelector('#traceResults .trace-batch')?.textContent === '批次进行中', {}, {timeout: 20000});
   for (let index = 0; index < 100 && slow.requests.filter(request => request.trace).length === before; index++) await wait(100);
   assert.ok(slow.requests.filter(request => request.trace).length > before, 'cancelled ModelTrace batch never reached the host model');
+  const crossCancel = await page.evaluate(() => fetch('/api/action', {
+    method: 'POST',
+    headers: {'content-type': 'application/json'},
+    body: JSON.stringify({provider: 'fixture-slow', model: 'shared-model', action: 'cancel-test'}),
+  }).then(response => response.status));
+  assert.equal(crossCancel, 400, 'cancel-test 在无质量检测时取消了 ModelTrace 批次');
   await page.locator('#traceCancel').click();
   await page.waitForFunction(() => document.querySelector('#traceResults .trace-batch')?.textContent === '批次已取消', {}, {timeout: 30000});
   const statuses = await page.locator('#traceResults .trace-item .state').allTextContents();

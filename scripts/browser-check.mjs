@@ -7,7 +7,7 @@ import http from 'node:http';
 import path from 'node:path';
 import {verifyHistoryAndReview, verifyHistoryAfterRestart} from './browser-history.mjs';
 import {verifyPreviews} from './browser-preview.mjs';
-import {verifyModelTrace, verifyModelTraceHistory} from './browser-modeltrace.mjs';
+import {verifyModelTrace, verifyModelTraceDoesNotCancelQualityCheck, verifyModelTraceHistory} from './browser-modeltrace.mjs';
 
 // Real DSH profile + host-configured controlled OpenAI-compatible services.
 // The browser path goes web console -> Go backend -> plugin -> ctx.llm.stream.
@@ -353,6 +353,10 @@ try {
   await openConsole(page, host);
   await verifyHistoryAfterRestart({page, reviewed: reviewed.reviewed});
   await verifyModelTraceHistory(page);
+
+  // A running quality check must not expose or accept ModelTrace cancellation.
+  await verifyModelTraceDoesNotCancelQualityCheck({page});
+
   await page.locator('#tab-history').click();
   await page.locator('#historyPrompt').selectOption('svg');
   assert.equal(await page.locator('#results details').count(), 1, '重启后 SVG 作品记录丢失');
@@ -371,7 +375,7 @@ try {
   assert.deepEqual(errors, []);
 
   await stopHost(host);
-  console.log(`PASS: DSH ${version} 隔离 profile 浏览器主链路：七题原文、provider 路由、实时增量、历史/组合身份筛选/同题对比/导出/下载/复制、人工评审与自动评估分离及重启读取、HTML/SVG 隔离预览、手动 ModelTrace 完整/无效/取消批次与闭集归因、检测运行与失败时独立业务会话并行`);
+  console.log(`PASS: DSH ${version} 隔离 profile 浏览器主链路：七题原文、provider 路由、实时增量、历史/组合身份筛选/同题对比/导出/下载/复制、人工评审与自动评估分离及重启读取、HTML/SVG 隔离预览、手动 ModelTrace 完整/无效/取消批次与闭集归因、普通质量检测不被 ModelTrace 取消、检测运行与失败时独立业务会话并行`);
 } finally {
   if (browser) await browser.close();
   for (const host of hosts) await stopHost(host);

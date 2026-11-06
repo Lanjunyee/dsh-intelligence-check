@@ -3,8 +3,9 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import assert from 'node:assert/strict';
+import {PLATFORM_TARGETS} from '../plugin/platform.mjs';
 const root=path.resolve(import.meta.dirname,'..');
-const platforms=[['linux','amd64'],['linux','arm64'],['darwin','amd64'],['darwin','arm64'],['windows','amd64']];
+const platforms=PLATFORM_TARGETS;
 const pkg=JSON.parse(await fs.readFile(path.join(root,'package.json'),'utf8'));
 assert.equal(pkg.name,'dsh-intelligence-check');
 assert.equal(pkg.license,'MIT');
@@ -15,14 +16,14 @@ assert.equal(pkg.engines?.dsh,'>=0.2.0 <0.3.0');
 assert.equal(pkg.icon,'./assets/plugin-icon.png');
 const icon=await fs.stat(path.join(root,pkg.icon));
 assert.ok(icon.size>0&&icon.size<=256*1024,`图标大小 ${icon.size} 超过 DSH 256 KiB 限制`);
-const shipped=['plugin/index.mjs','plugin/backend.mjs','cordis.patch.yml','assets/plugin-icon.png','README.md','LICENSE','third_party/cloudflared/LICENSE','third_party/modeltrace/LICENSE','third_party/fonts/SpaceGrotesk-OFL.txt','third_party/fonts/SpaceMono-OFL.txt','third_party/lucide/LICENSE'];
+const shipped=['plugin/index.mjs','plugin/backend.mjs','plugin/platform.mjs','cordis.patch.yml','assets/plugin-icon.png','README.md','LICENSE','third_party/cloudflared/LICENSE','third_party/modeltrace/LICENSE','third_party/fonts/SpaceGrotesk-OFL.txt','third_party/fonts/SpaceMono-OFL.txt','third_party/lucide/LICENSE'];
 for(const name of shipped)assert.ok((await fs.readFile(path.join(root,name))).length>0,`缺少分发文件 ${name}`);
 const manifest=JSON.parse(await fs.readFile(path.join(root,'dist/manifest.json'),'utf8'));
 assert.equal(manifest.version,pkg.version);
 const sums=await fs.readFile(path.join(root,'dist/SHA256SUMS'),'utf8');
 const sumMap=new Map(sums.trim().split('\n').map(line=>{const [sha256,name]=line.split(/\s+/);return [name,sha256]}));
 const byName=new Map(manifest.artifacts.map(item=>[item.name,item]));
-for(const [goos,goarch] of platforms){
+for(const {goos,goarch} of platforms){
  const suffix=goos==='windows'?'.exe':'';
  const binary=`quality-check-${goos}-${goarch}${suffix}`;
  const archive=`dsh-intelligence-check-${goos}-${goarch}.tgz`;
@@ -41,7 +42,7 @@ for(const [goos,goarch] of platforms){
  const listing=spawnSync('tar',['-tzf',file],{encoding:'utf8',maxBuffer:64*1024*1024});
  assert.equal(listing.status,0);
  const files=new Set(listing.stdout.split('\n').filter(Boolean));
- for(const name of ['package/package.json','package/cordis.patch.yml','package/plugin/index.mjs','package/plugin/backend.mjs','package/assets/plugin-icon.png','package/README.md','package/LICENSE','package/third_party/cloudflared/LICENSE','package/third_party/modeltrace/LICENSE','package/third_party/fonts/SpaceGrotesk-OFL.txt','package/third_party/lucide/LICENSE'])
+ for(const name of ['package/package.json','package/cordis.patch.yml','package/plugin/index.mjs','package/plugin/backend.mjs','package/plugin/platform.mjs','package/assets/plugin-icon.png','package/README.md','package/LICENSE','package/third_party/cloudflared/LICENSE','package/third_party/modeltrace/LICENSE','package/third_party/fonts/SpaceGrotesk-OFL.txt','package/third_party/lucide/LICENSE'])
   assert.ok(files.has(name),`${archive} 缺少 ${name}`);
  const packedBin=`package/bin/quality-check${suffix}`;
  assert.ok(files.has(packedBin),`${archive} 缺少 ${packedBin}`);

@@ -1,5 +1,5 @@
 import { analyzeGlobalOutputs } from './fingerprint-core.js';
-import { $, text, syncSelect, dateTime, identity, modelLabel, names, traceBatchState } from '../assets/ui.js';
+import { $, text, syncSelect, dateTime, identity, modelLabel, names, traceBatchState, traceRunning } from '../assets/ui.js';
 
 let bank, bankLoading, latestData, rendered;
 const percent = value => `${(value * 100).toFixed(1)}%`;
@@ -36,8 +36,9 @@ export function renderModelTrace(data) {
   const batch = $('#traceBatch').value || batches[0];
   const results = records.filter(r => r.batch === batch);
   const running = results.some(r => r.verdict === 'running');
-  const targetRunning = target && data.state.results.some(r => r.provider === target.provider && r.model === target.model && r.verdict === 'running');
-  $('#traceCancel').hidden = !targetRunning;
+  const targetResults = target ? data.state.results.filter(r => r.provider === target.provider && r.model === target.model) : [];
+  const targetRunning = targetResults.some(r => r.verdict === 'running');
+  $('#traceCancel').hidden = !traceRunning(targetResults);
   $('#traceRun').disabled = $('#traceRun').hasAttribute('aria-busy') || !target || targetRunning;
   const signature = JSON.stringify([select.value, results, Boolean(bank)]);
   if (signature === rendered) return;

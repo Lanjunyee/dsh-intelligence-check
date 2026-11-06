@@ -1,16 +1,15 @@
 import {spawn} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
+import {hostTarget} from './platform.mjs';
 
 const TIMEOUT_MS = 15000;
 const STOP_GRACE_MS = 3000;
 
 export function resolveBinary(root, config = {}) {
   if (config.binaryPath) return path.resolve(config.binaryPath);
-  const platform = ({win32: 'windows'})[process.platform] || process.platform;
-  const arch = ({x64: 'amd64', arm64: 'arm64'})[process.arch] || process.arch;
-  const suffix = platform === 'windows' ? '.exe' : '';
-  const bundled = path.join(root, 'bin', `quality-check-${platform}-${arch}${suffix}`);
+  const {goos, goarch, suffix} = hostTarget();
+  const bundled = path.join(root, 'bin', `quality-check-${goos}-${goarch}${suffix}`);
   if (existsSync(bundled)) return bundled;
   return path.join(root, 'bin', `quality-check${suffix}`);
 }
