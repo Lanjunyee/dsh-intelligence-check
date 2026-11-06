@@ -103,3 +103,50 @@ node scripts/dsh-lifecycle-check.mjs
 node scripts/dsh-auto-check.mjs
 PLAYWRIGHT_EXECUTABLE="/Users/jxq/Library/Caches/ms-playwright/chromium-1243/chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing" node scripts/browser-check.mjs
 ```
+
+## 8. 统一审查修复回归与最终产物
+
+审查后的修复提交为 `97a6dd304429c6f4d36386bc1e31cb20b89a91af`。该提交只改变源码、嵌入网页资源、脚本与 checked-in 五平台二进制；随后从同一源码重新生成 `dist/` 并用最终 tarball 重跑受影响验收。第 2 节的产物与哈希保留为修复前记录，本节哈希为最终 HEAD 产物。
+
+### 8.1 修复内容与回归
+
+- **ModelTrace 取消隔离**：普通质量检测运行时不再显示 ModelTrace 取消按钮；`cancel-modeltrace` 只作用于实际 ModelTrace 批次，`cancel-test` 也不会取消 ModelTrace 批次。Go 测试覆盖两个方向，真实浏览器在普通 milk 运行中验证按钮不可见、接口返回 400 且 milk 正常完成，并在慢速 ModelTrace 批次中验证 `cancel-test` 返回 400 后合法批次取消仍会中止活动调用、跳过未开始条目并保留预算语义。
+- **HTML 预览 401 文案**：嵌入资源中的过期会话提示改为 DeepSeek Harness 的 `dsh-intelligence-check` 入口；UI 测试断言不再包含 Magpie。
+- **Standards 候选处置**：保留旧门禁路径不影响保存的有效覆盖并改名为 `TestLegacyArtifactPathDoesNotAffectSaving`；质量检测与 ModelTrace 共用失败映射但分别保留评分/原始回答成功语义；删除用量改用具名 `clearedUsage` 映射并保持原 JSON 形状；`Secret` 改名为 `RandomHex`；五平台映射集中到 `plugin/platform.mjs`；真实 DSH 脚本的隔离 home、安装、启动、停止与会话交换集中到 `scripts/dsh-harness.mjs`，各脚本的受控模型与断言保持独立。
+
+### 8.2 最新产物（同一源码连续两次构建哈希一致）
+
+| 产物 | SHA-256 |
+|---|---|
+| `dist/dsh-intelligence-check-darwin-arm64.tgz`（6,867,068 B） | `248e3179b30676881f922e82c60f69b1b060962d153d99daddee1c9d46fd7f1a` |
+| `dist/quality-check-darwin-arm64`（12,933,746 B） | `ef6ce71cfc191c369acd8855badcf47bf069151efa8df8798d5ac6d7199d3d91` |
+| `dist/quality-check-darwin-amd64` | `f04729939754e7fa68102cbb9eb85a94198a2bfc5423292e9011d967751840fc` |
+| `dist/quality-check-linux-amd64` | `b1ec4f134652440ba0d2c1e6ba6d47c3e3bb49ffa0b8801848036f26439bff39` |
+| `dist/quality-check-linux-arm64` | `077f7dbf6a390978a00ad0171b5840f7fa624adffd475a8e6bbf43de5217b5ef` |
+| `dist/quality-check-windows-amd64.exe` | `b1eac5c12164f6a3ba83ab5bdd952a293abb23ad523e8d41cefd7a687e161667` |
+| `dist/dsh-intelligence-check-darwin-amd64.tgz` | `4797025e21818962f7aa57581dc498bfcb963a534284889ee70bfdc9f7b84102` |
+| `dist/dsh-intelligence-check-linux-amd64.tgz` | `3905fe5fa935f2b1d2cf322b759b5f9980fecd53e9180acfbbe6b9e90de3b18c` |
+| `dist/dsh-intelligence-check-linux-arm64.tgz` | `3233932b6bf8bf2a61c44fead3991fbffc82016ec901214405a0f9ca0ee7dd77` |
+| `dist/dsh-intelligence-check-windows-amd64.tgz` | `e3dd8ede90a2d7e4e2b3747a683786512b4082495621e080db85e53ef3865e9e` |
+
+`dist/SHA256SUMS` 为 `9783839b4223446b2c9cdf2deb1b3ee942d6fe71db9a0868eb4a9e217c44b350`，10/10 校验通过。
+
+### 8.3 修复后验证结果
+
+| 检查 | 结果 |
+|---|---|
+| `go vet ./...` | PASS |
+| `go test -race ./...` | PASS，81 项，2 个包 |
+| `node --test plugin/*.test.mjs` | PASS，18 项 |
+| `node --test scripts/ui.test.mjs` | PASS，6 项（含取消隔离与 401 文案回归） |
+| `node scripts/build-release.mjs`（连续两次） | PASS，10 个产物 SHA-256 一致 |
+| `node scripts/package-check.mjs` | PASS |
+| `node scripts/install-check.mjs` | PASS |
+| `shasum -a 256 -c SHA256SUMS` | PASS，10/10 |
+| `node scripts/dsh-profile-check.mjs` | PASS（最终 tarball，非 binaryPath 覆盖） |
+| `node scripts/dsh-lifecycle-check.mjs` | PASS（最终 tarball） |
+| `node scripts/dsh-auto-check.mjs` | PASS（最终 tarball） |
+| `node scripts/browser-check.mjs` | PASS（最终 tarball；含普通 milk 不被取消、合法 ModelTrace 取消回归） |
+
+真实宿主仍为 DSH `0.2.2-rc.1`、macOS 27.2 arm64、隔离 `DSH_HOME`、宿主配置的本地受控模型、运行时 PATH 不含 Go。第 5 节的边界仍然适用：其他四平台仅交叉编译与静态包检查；未等待生产 15 分钟与 180 秒超时；Cloudflare 临时通道未重跑；未使用真实凭据或付费模型；未推送、未发布。
+
