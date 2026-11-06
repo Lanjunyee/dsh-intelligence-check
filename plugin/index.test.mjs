@@ -212,6 +212,36 @@ test('profiles share one backend, one catalog authority, and keep working when t
   }
 });
 
+test('a CLI host started before the desktop connects on a later request without spawning', async () => {
+  const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-cli-late-'));
+  const cli = profile({catalog: catalogFor('provider-two')});
+  const desktop = profile({catalog: catalogFor('provider-one')});
+  let cliServer, desktopServer;
+  try {
+    await apply(cli.ctx, {binaryPath, dataDir});
+    cliServer = await serve(cli.ctx.injectRoutes()[0]);
+    const before = await fetch(cliServer.origin + '/dsh-intelligence-check/api/state');
+    assert.equal(before.status, 503);
+    assert.equal(processes(dataDir).length, 0, 'the CLI host started a backend before the desktop');
+
+    await apply(desktop.ctx, {binaryPath, dataDir, desktop: true});
+    desktopServer = await serve(desktop.ctx.injectRoutes()[0]);
+    const after = await fetch(cliServer.origin + '/dsh-intelligence-check/api/state');
+    assert.equal(after.status, 200, await after.clone().text());
+    const body = await after.json();
+    assert.deepEqual(body.catalog.map(entry => entry.provider), ['provider-one'],
+      'the late CLI connection overrode the desktop catalog');
+    assert.equal(processes(dataDir).length, 1, 'the CLI host started an extra backend');
+    assert.equal(cli.catalogReads, 0, 'the CLI host published its own model catalog');
+  } finally {
+    await desktopServer?.close();
+    await cliServer?.close();
+    await desktop.ctx.dispose().catch(() => {});
+    await cli.ctx.dispose().catch(() => {});
+    rmSync(dataDir, {recursive: true, force: true});
+  }
+});
+
 test('a CLI host joins the running desktop backend without starting or overriding it', async () => {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-cli-join-'));
   const desktop = profile({catalog: catalogFor('provider-one')});

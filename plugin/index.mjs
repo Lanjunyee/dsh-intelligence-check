@@ -135,8 +135,13 @@ export async function apply(ctx, config = {}) {
           return;
         }
         if (!backend?.origin) {
-          unavailable(response, new Error('请通过 DSH 桌面应用打开'));
-          return;
+          // A CLI/Web host may have started before the desktop backend. Its
+          // ensure() only attaches, so retry the join on first use.
+          if (!(await backend.ensure())) {
+            unavailable(response, new Error('请通过 DSH 桌面应用打开'));
+            return;
+          }
+          if (backend.owner) await syncCatalog();
         }
         try {
           const headers = {authorization: 'Bearer ' + backend.control};
