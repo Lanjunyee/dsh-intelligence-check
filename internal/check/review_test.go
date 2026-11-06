@@ -110,6 +110,53 @@ func TestReviewPersistsWithoutChangingVerdict(t *testing.T) {
 	}
 }
 
+func TestReviewPersistsSeparatelyFromAutomaticEvaluationAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	s, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	one := TargetID{Provider: "provider-one", Model: "shared-model"}
+	two := TargetID{Provider: "provider-two", Model: "shared-model"}
+	for _, id := range []TargetID{one, two} {
+		if err := s.SetTarget(id, false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s.state.Results = append(s.state.Results,
+		Result{ID: "one-run", Provider: one.Provider, Model: one.Model, Prompt: "milk", Answer: "46.24 inches", Verdict: "passed", Time: time.Now()},
+		Result{ID: "two-run", Provider: two.Provider, Model: two.Model, Prompt: "milk", Answer: "48 inches", Verdict: "failed", Time: time.Now()},
+	)
+	s.mu.Lock()
+	err = s.saveLocked()
+	s.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReviewResult("two-run", "rejected", "忽略子代自身消化能力"); err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+
+	restored, err := New(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer restored.Close()
+	state, _ := restored.Snapshot()
+	byID := map[string]Result{}
+	for _, result := range state.Results {
+		byID[result.ID] = result
+	}
+	oneRun, twoRun := byID["one-run"], byID["two-run"]
+	if oneRun.Provider != one.Provider || oneRun.Verdict != "passed" || oneRun.Review != "" {
+		t.Fatalf("automatic evaluation changed after restart: %+v", oneRun)
+	}
+	if twoRun.Provider != two.Provider || twoRun.Verdict != "failed" || twoRun.Review != "rejected" || twoRun.ReviewNote != "忽略子代自身消化能力" || twoRun.ReviewedAt.IsZero() {
+		t.Fatalf("human review lost or merged after restart: %+v", twoRun)
+	}
+}
+
 func TestDeleteTargetPreservesHistory(t *testing.T) {
 	id := TargetID{Provider: "provider-a", Model: "solo"}
 	s := fixture(t)
