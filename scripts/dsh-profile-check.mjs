@@ -3,9 +3,8 @@ import {existsSync} from 'node:fs';
 import {readFile, rm, writeFile} from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
-import {createRequire} from 'node:module';
 import {
-  backendBinary, backendProcesses, createDshHarness, getState, openNativePage, openPageSession,
+  backendBinary, backendProcesses, createDshHarness, getState, loadPlaywright, openNativePage, openPageSession,
   pluginConfigOverride, postJSON, waitForProcessCount,
 } from './dsh-harness.mjs';
 
@@ -17,9 +16,7 @@ const sharedDir = path.join(home, 'dsh-intelligence-check');
 assert.ok(existsSync(backendBinary()), `缺少后台二进制，请先构建：go build -o bin/quality-check ./cmd/quality-check`);
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-const bundledPlaywright = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
-const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundledPlaywright) ? bundledPlaywright : '');
-const {chromium} = playwrightPath ? createRequire(import.meta.url)(playwrightPath) : {};
+const {chromium} = loadPlaywright({optional: true}) || {};
 
 const mock = http.createServer(async (request, response) => {
   if (request.url?.endsWith('/models')) {
@@ -199,7 +196,6 @@ try {
     }
     browser = await chromium.launch(launchOptions);
     const page = await openNativePage(browser, a.login(), {tab: /模型监测/});
-    page.on('console', message => { if (message.type() === 'error') console.error('[ui] console:', message.text()); });
     await page.locator('.dic-table tbody tr').filter({hasText: 'shared-model'}).waitFor({timeout: 15000});
     await page.getByRole('tab', {name: /质量题库/}).click();
     await page.locator('.dic-test-controls select').nth(0).selectOption({index: 0});

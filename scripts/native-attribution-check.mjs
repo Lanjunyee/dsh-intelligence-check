@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import http from 'node:http';
 import {rm} from 'node:fs/promises';
+import http from 'node:http';
 import {
   createDshHarness, launchChromium, openNativePage, openPageSession, pluginConfigOverride, postJSON, providerPatch,
 } from './dsh-harness.mjs';
@@ -123,9 +123,8 @@ ${pluginConfigOverride()}`);
   failure = error;
 }
 
-// Issue #20: stop this run's resources before removing only the directories it
-// created. Cleanup errors stay visible; an original test failure keeps its
-// message and is reported together with any cleanup failure.
+// Issue #20：先停止本次运行的资源，再只删除本次创建的目录。清理错误保持可见；
+// 原始测试失败保留其消息，并与清理错误一并报告。
 const cleanupFailures = [];
 async function cleanup(label, action) {
   try {
