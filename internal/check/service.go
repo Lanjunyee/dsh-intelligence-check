@@ -13,8 +13,15 @@ import (
 	"time"
 )
 
+const (
+	DefaultDailyLimit      = 120
+	DefaultIntervalSeconds = 900
+)
+
 type Config struct {
-	DailyLimit int `json:"daily_limit"`
+	DailyLimit      int  `json:"daily_limit"`
+	AutoEnabled     bool `json:"auto_enabled"`
+	IntervalSeconds int  `json:"interval_seconds"`
 }
 
 // TargetID is the provider route plus the exact model id. Display names and
@@ -88,6 +95,8 @@ type Service struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	wg          sync.WaitGroup
+	autoWake    chan struct{}
+	autoDone    chan struct{}
 	store       *Store
 	transport   Transport
 	health      string
@@ -117,12 +126,15 @@ func newService(dir string, transport Transport) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Service{store: store, catalog: []Model{}, running: map[TargetID]bool{}}
+	s := &Service{store: store, catalog: []Model{}, running: map[TargetID]bool{}, autoWake: make(chan struct{}, 1), autoDone: make(chan struct{})}
 	s.ctx, s.cancel = context.WithCancel(context.Background())
-	s.state = State{Config: Config{DailyLimit: 120}, Targets: []Target{}, Results: []Result{}}
+	s.state = State{Config: Config{DailyLimit: DefaultDailyLimit, IntervalSeconds: DefaultIntervalSeconds}, Targets: []Target{}, Results: []Result{}}
 	if err := store.Load(&s.state); err != nil {
 		store.Close()
 		return nil, err
+	}
+	if s.state.Config.IntervalSeconds == 0 {
+		s.state.Config.IntervalSeconds = DefaultIntervalSeconds
 	}
 	if s.state.Targets == nil {
 		s.state.Targets = []Target{}
@@ -144,10 +156,16 @@ func newService(dir string, transport Transport) (*Service, error) {
 		store.Close()
 		return nil, err
 	}
+	go s.autoLoop()
 	return s, nil
 }
 
-func (s *Service) Close() { s.cancel(); s.wg.Wait(); s.store.Close() }
+func (s *Service) Close() {
+	s.cancel()
+	<-s.autoDone
+	s.wg.Wait()
+	s.store.Close()
+}
 
 func (s *Service) saveLocked() error {
 	if err := s.store.Save(s.state); err != nil {
@@ -194,13 +212,82 @@ func (s *Service) Catalog() []Model {
 }
 
 func (s *Service) Configure(c Config) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if c.IntervalSeconds == 0 {
+		c.IntervalSeconds = DefaultIntervalSeconds
+	}
 	if c.DailyLimit < 1 || c.DailyLimit > 10000 {
 		return errors.New("每日预算须为 1–10000 次")
 	}
+	if c.IntervalSeconds < 1 || c.IntervalSeconds > 86400 {
+		return errors.New("自动检测间隔须为 1–86400 秒")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.state.Config = c
-	return s.saveLocked()
+	err := s.saveLocked()
+	s.wakeAutoLocked()
+	return err
+}
+
+func (s *Service) wakeAutoLocked() {
+	select {
+	case s.autoWake <- struct{}{}:
+	default:
+	}
+}
+
+// autoLoop runs only while automatic checks are enabled. It has no catch-up:
+// changing the settings or targets restarts the interval, and shutdown stops
+// the loop before the service waits for active model calls.
+func (s *Service) autoLoop() {
+	defer close(s.autoDone)
+	for {
+		s.mu.Lock()
+		enabled := s.state.Config.AutoEnabled
+		interval := time.Duration(s.state.Config.IntervalSeconds) * time.Second
+		s.mu.Unlock()
+		if !enabled {
+			select {
+			case <-s.autoWake:
+			case <-s.ctx.Done():
+				return
+			}
+			continue
+		}
+		timer := time.NewTimer(interval)
+		select {
+		case <-timer.C:
+			s.runAutomaticChecks()
+		case <-s.autoWake:
+		case <-s.ctx.Done():
+			timer.Stop()
+			return
+		}
+		timer.Stop()
+	}
+}
+
+func (s *Service) runAutomaticChecks() {
+	if s.ctx.Err() != nil {
+		return
+	}
+	s.mu.Lock()
+	if !s.state.Config.AutoEnabled {
+		s.mu.Unlock()
+		return
+	}
+	ids := make([]TargetID, 0, len(s.state.Targets))
+	for _, target := range s.state.Targets {
+		if target.Enabled {
+			ids = append(ids, target.TargetID)
+		}
+	}
+	s.mu.Unlock()
+	for _, id := range ids {
+		// A running check or an exhausted budget intentionally skips this tick;
+		// automatic checks share the same merge and budget rules as manual ones.
+		_ = s.Trigger(id, "milk")
+	}
 }
 
 func (s *Service) targetLocked(id TargetID) *Target {
@@ -223,7 +310,9 @@ func (s *Service) SetTarget(id TargetID, enabled bool) error {
 	} else {
 		s.state.Targets = append(s.state.Targets, Target{TargetID: id, Enabled: enabled})
 	}
-	return s.saveLocked()
+	err := s.saveLocked()
+	s.wakeAutoLocked()
+	return err
 }
 
 func (s *Service) DeleteTarget(id TargetID) error {
@@ -248,6 +337,7 @@ func (s *Service) DeleteTarget(id TargetID) error {
 		json.Unmarshal(previous, &s.state)
 		return err
 	}
+	s.wakeAutoLocked()
 	return nil
 }
 

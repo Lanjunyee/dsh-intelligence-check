@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestConfigStoresOnlyDailyBudget(t *testing.T) {
+func TestConfigStoresDetectionSettingsWithoutLegacyCredentials(t *testing.T) {
 	s := fixture(t)
 	if err := s.Configure(Config{DailyLimit: 0}); err == nil {
 		t.Fatal("accepted an invalid budget")
@@ -19,6 +19,9 @@ func TestConfigStoresOnlyDailyBudget(t *testing.T) {
 	state, _ := s.Snapshot()
 	if state.Config.DailyLimit != 45 {
 		t.Fatal("budget not saved")
+	}
+	if state.Config.AutoEnabled || state.Config.IntervalSeconds != 900 {
+		t.Fatalf("automatic settings defaults changed: %+v", state.Config)
 	}
 	body, _ := json.Marshal(state.Config)
 	if strings.Contains(string(body), "gateway") || strings.Contains(string(body), "key") {
