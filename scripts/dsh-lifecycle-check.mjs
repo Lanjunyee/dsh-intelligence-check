@@ -115,8 +115,7 @@ ${models.map(model => `          - id: ${model}
             input: [text]`).join('\n')}`;
 }
 
-function lifecyclePatch() {
-  return `- id: llm-pi-ai
+const lifecyclePatch = `- id: llm-pi-ai
   config:
     providers:
 ${provider('provider-one', 'Provider One', one.origin, ['complete-model', 'cached-model', 'no-usage-model', 'error-model', 'truncate-model', 'retest-model', 'slow-model'])}
@@ -126,7 +125,6 @@ ${provider('provider-two', 'Provider Two', two.origin, ['slow-model'])}
     provider: provider-one
     model: complete-model
 ${pluginConfigOverride()}`;
-}
 
 async function openPage(host) {
   const {client, payload} = await openPageSession(host);
@@ -181,7 +179,7 @@ function total(record) {
 try {
   const version = dshRun(['--version']).stdout.trim();
   assert.match(version, /^\d+\.\d+\.\d+/);
-  await installProfile('lifecycle-check', lifecyclePatch());
+  await installProfile('lifecycle-check', lifecyclePatch);
   let host = await bootProfile('lifecycle-check');
   let client = await openPage(host);
 

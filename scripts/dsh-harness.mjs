@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {spawn, spawnSync} from 'node:child_process';
+import {execFileSync, spawn, spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {mkdtemp, writeFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
@@ -118,11 +118,28 @@ export async function getState(client) {
   return response.json();
 }
 
+// Shared process observation for the isolated hosts. Callers keep their own
+// data directory filter, expected count, timeout and failure message.
+export function backendProcesses(dataDir) {
+  return execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
+    .split('\n').filter(line => line.includes(dataDir));
+}
+
+export async function waitForProcessCount(dataDir, count, {timeout = 10000, message = `共享后台进程数不是 ${count}`} = {}) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    if (backendProcesses(dataDir).length === count) return;
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  assert.equal(backendProcesses(dataDir).length, count, message);
+}
+
 // Shared Playwright loading boundary for the real native-page regressions.
 export async function launchChromium() {
   const bundled = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
   const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundled) ? bundled : '');
-  assert.ok(playwrightPath && existsSync(playwrightPath), `缺少 Playwright 模块：${playwrightPath}`);
+  assert.ok(playwrightPath && existsSync(playwrightPath),
+    `缺少 Playwright 模块，请设置 PLAYWRIGHT_MODULE 指向可用的 playwright 包：${playwrightPath || '(未设置且未找到内置模块)'}`);
   const {chromium} = createRequire(import.meta.url)(playwrightPath);
   const options = {headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge'};
   if (process.env.PLAYWRIGHT_EXECUTABLE) {
@@ -140,20 +157,24 @@ export async function openNativePage(browser, login, {tab}) {
   await page.goto(login);
   const entry = page.getByText('模型质量检测', {exact: true}).first();
   await entry.waitFor({timeout: 30000});
+  let clickError;
   for (let attempt = 0; attempt < 20; attempt++) {
-    const notice = page.getByRole('button', {name: '继续'});
+    const notice = page.getByRole('button', {name: /^(继续|Continue)$/});
     if (await notice.isVisible().catch(() => false)) {
       await notice.click();
       await page.waitForTimeout(200);
     }
     try {
       await entry.click({timeout: 3000});
+      clickError = undefined;
       break;
     } catch (error) {
+      clickError = error;
       if (page.isClosed()) throw error;
       await page.waitForTimeout(300);
     }
   }
+  if (clickError) throw clickError;
   await page.locator('.dic-page h1').waitFor({timeout: 30000});
   await page.getByRole('tab', {name: tab}).click();
   return page;
