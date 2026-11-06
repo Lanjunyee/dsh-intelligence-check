@@ -908,8 +908,12 @@ function CheckPage() {
               h('table', {className: 'dic-table'},
                 h('thead', null, h('tr', null,
                   h('th', null, '候选模型'), h('th', null, '家族'), h('th', {className: 'dic-align-right'}, '闭集概率'))),
-                h('tbody', null, ...rankingRows)))),
-        traceReportError ? h('p', {className: 'dic-error'}, `本轮无法归因：${traceReportError}`) : null);
+                h('tbody', null, ...rankingRows)))));
+    } else if (traceReportError) {
+      // An attribution exception is its own outcome: show it even though no
+      // report could be produced, rather than falling back to a silent empty
+      // result.
+      traceContent = h('p', {className: 'dic-error', role: 'alert'}, `本轮无法归因：${traceReportError}`);
     }
     return h('section', {className: 'dic-section', role: 'tabpanel', 'aria-labelledby': 'dic-tab-fingerprint'},
       h('div', {className: 'dic-section-head'}, h('h2', null, 'ModelTrace'), h('span', {className: 'dic-hint'}, '18 个候选 / GPT + Claude')),
