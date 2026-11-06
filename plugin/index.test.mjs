@@ -103,18 +103,111 @@ async function waitUntil(predicate, timeout = 5000) {
   return false;
 }
 
+// Tests isolate the host by DSH_HOME, the same public switch real DSH uses.
+function setHome(home) {
+  const previous = process.env.DSH_HOME;
+  process.env.DSH_HOME = home;
+  return () => {
+    if (previous === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previous;
+  };
+}
+
 test('desktop detection and the shared user-level data directory', () => {
   assert.equal(isDesktopHost({}), false);
   assert.equal(isDesktopHost({DSH_CLIENT_VERSION: '0.2.2'}), true);
   assert.equal(isDesktopHost({DSH_INTELLIGENCE_CHECK_DESKTOP: '1'}), true);
   assert.equal(isDesktopHost({}, {desktop: true}), true);
   assert.equal(sharedDataDir({DSH_HOME: '/tmp/home'}), '/tmp/home/dsh-intelligence-check');
-  assert.equal(sharedDataDir({DSH_HOME: '/tmp/home'}, {dataDir: '/tmp/explicit'}), '/tmp/explicit');
-  assert.equal(sharedDataDir({DSH_HOME: '/tmp/home', DSH_INTELLIGENCE_CHECK_DATA_DIR: '/tmp/env'}), '/tmp/env');
+  assert.equal(sharedDataDir({}), path.join(os.homedir(), '.dsh', 'dsh-intelligence-check'));
+  // Legacy per-profile and plugin-env overrides no longer select a data directory.
+  assert.equal(sharedDataDir({DSH_HOME: '/tmp/home'}, {dataDir: '/tmp/explicit'}), '/tmp/home/dsh-intelligence-check');
+  assert.equal(sharedDataDir({DSH_HOME: '/tmp/home', DSH_INTELLIGENCE_CHECK_DATA_DIR: '/tmp/env'}), '/tmp/home/dsh-intelligence-check');
+});
+
+test('legacy data-directory overrides cannot split the shared configuration, targets, records or reviews', {
+  skip: process.platform === 'win32' ? '该共享存储回归使用 POSIX 进程观测' : false,
+  timeout: 40000,
+}, async () => {
+  const home = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-legacy-home-'));
+  const legacyConfig = {
+    first: mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-legacy-config-')),
+    second: mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-legacy-config-')),
+  };
+  const legacyEnv = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-legacy-env-'));
+  const sharedDir = path.join(home, 'dsh-intelligence-check');
+  const previousHome = process.env.DSH_HOME;
+  const previousOverride = process.env.DSH_INTELLIGENCE_CHECK_DATA_DIR;
+  const first = profile({catalog: catalogFor('provider-one')});
+  const second = profile({catalog: catalogFor('provider-one')});
+  let firstServer, secondServer;
+  try {
+    process.env.DSH_HOME = home;
+    process.env.DSH_INTELLIGENCE_CHECK_DATA_DIR = legacyEnv;
+    await apply(first.ctx, {binaryPath, desktop: true, dataDir: legacyConfig.first});
+    firstServer = await serve(first.ctx.injectRoutes()[0]);
+    delete process.env.DSH_INTELLIGENCE_CHECK_DATA_DIR;
+    await apply(second.ctx, {binaryPath, desktop: true, dataDir: legacyConfig.second});
+    secondServer = await serve(second.ctx.injectRoutes()[0]);
+
+    const stateAt = async server => (await (await fetch(server.origin + '/dsh-intelligence-check/api/state')).json()).state;
+    const postAt = async (server, pathname, body) => {
+      const response = await fetch(server.origin + '/dsh-intelligence-check' + pathname, {
+        method: 'POST',
+        headers: {'content-type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      assert.equal(response.status, 200, await response.text());
+    };
+
+    // Configuration saved through one profile is visible through the other.
+    await postAt(firstServer, '/api/config', {daily_limit: 7, auto_enabled: false, interval_seconds: 300});
+    assert.equal((await stateAt(secondServer)).config.daily_limit, 7, '旧覆盖值分裂了检测配置');
+
+    // A target added through the second profile is visible through the first.
+    await postAt(secondServer, '/api/target', {provider: 'provider-one', model: 'shared-model', enabled: false});
+    assert.deepEqual((await stateAt(firstServer)).targets.map(target => target.provider), ['provider-one'],
+      '旧覆盖值分裂了监测目标');
+
+    // A record produced through the second profile is visible through the first.
+    await postAt(secondServer, '/api/action', {provider: 'provider-one', model: 'shared-model', action: 'test', prompt: 'milk'});
+    let milk;
+    for (let i = 0; i < 200; i++) {
+      milk = (await stateAt(firstServer)).results.find(record => record.prompt === 'milk' && record.verdict !== 'running');
+      if (milk) break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    assert.ok(milk, '旧覆盖值分裂或阻断了检测记录');
+    assert.equal(milk.answer, '46.24 inches');
+
+    // A human review written through the first profile is visible through the second.
+    await postAt(firstServer, `/api/results/${milk.id}/review`, {decision: 'accepted', note: 'shared review'});
+    const reviewed = (await stateAt(secondServer)).results.find(record => record.id === milk.id);
+    assert.equal(reviewed.review, 'accepted', '旧覆盖值分裂了人工评审');
+    assert.equal(reviewed.review_note, 'shared review');
+
+    assert.ok(existsSync(path.join(sharedDir, 'check.db')), '共享 DSH_HOME 中未创建数据库');
+    assert.equal(processes(sharedDir).length, 1, '旧覆盖值启动了第二套或未启动共享后台');
+    for (const dir of [...Object.values(legacyConfig), legacyEnv]) {
+      assert.equal(existsSync(path.join(dir, 'check.db')), false, `旧覆盖目录仍被使用：${dir}`);
+    }
+  } finally {
+    await firstServer?.close();
+    await secondServer?.close();
+    await first.ctx.dispose().catch(() => {});
+    await second.ctx.dispose().catch(() => {});
+    if (previousHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = previousHome;
+    if (previousOverride === undefined) delete process.env.DSH_INTELLIGENCE_CHECK_DATA_DIR;
+    else process.env.DSH_INTELLIGENCE_CHECK_DATA_DIR = previousOverride;
+    rmSync(home, {recursive: true, force: true});
+    for (const dir of [...Object.values(legacyConfig), legacyEnv]) rmSync(dir, {recursive: true, force: true});
+  }
 });
 
 test('a CLI host registers the native page API but never starts the backend', async () => {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-cli-data-'));
+  const restoreHome = setHome(dataDir);
   const marker = path.join(dataDir, 'started');
   const fixture = path.join(dataDir, 'backend.mjs');
   await writeFile(fixture, `#!/usr/bin/env node
@@ -125,7 +218,7 @@ setInterval(() => {}, 1000);
 `, {mode: 0o700});
   const p = profile();
   try {
-    await apply(p.ctx, {binaryPath: fixture, dataDir});
+    await apply(p.ctx, {binaryPath: fixture});
     assert.equal(existsSync(marker), false, 'CLI host started the desktop backend');
     assert.equal(p.commands.length, 0, 'the removed slash command was still registered');
     assert.equal(p.catalogReads, 0, 'CLI host pushed a model catalog');
@@ -142,6 +235,7 @@ setInterval(() => {}, 1000);
   } finally {
     assert.equal(existsSync(marker), false);
     await p.ctx.dispose();
+    restoreHome();
     rmSync(dataDir, {recursive: true, force: true});
   }
 });
@@ -151,11 +245,12 @@ test('profiles share one backend, one catalog authority, and keep working when t
   timeout: 30000,
 }, async () => {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-shared-'));
+  const restoreHome = setHome(dataDir);
   const first = profile({catalog: catalogFor('provider-one')});
   const second = profile({catalog: catalogFor('provider-two')});
   let firstServer, secondServer;
   try {
-    await apply(first.ctx, {binaryPath, dataDir, desktop: true});
+    await apply(first.ctx, {binaryPath, desktop: true});
     assert.equal(first.commands.length, 0);
     const [firstRoute] = first.ctx.injectRoutes();
     firstServer = await serve(firstRoute);
@@ -163,7 +258,7 @@ test('profiles share one backend, one catalog authority, and keep working when t
     assert.deepEqual(state.state.targets, []);
     assert.deepEqual(state.catalog.map(entry => entry.provider), ['provider-one']);
 
-    await apply(second.ctx, {binaryPath, dataDir, desktop: true});
+    await apply(second.ctx, {binaryPath, desktop: true});
     const [secondRoute] = second.ctx.injectRoutes();
     secondServer = await serve(secondRoute);
     const shared = await (await fetch(secondServer.origin + '/dsh-intelligence-check/api/state')).json();
@@ -208,23 +303,25 @@ test('profiles share one backend, one catalog authority, and keep working when t
     await secondServer?.close();
     await first.ctx.dispose().catch(() => {});
     await second.ctx.dispose().catch(() => {});
+    restoreHome();
     rmSync(dataDir, {recursive: true, force: true});
   }
 });
 
 test('a CLI host started before the desktop connects on a later request without spawning', async () => {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-cli-late-'));
+  const restoreHome = setHome(dataDir);
   const cli = profile({catalog: catalogFor('provider-two')});
   const desktop = profile({catalog: catalogFor('provider-one')});
   let cliServer, desktopServer;
   try {
-    await apply(cli.ctx, {binaryPath, dataDir});
+    await apply(cli.ctx, {binaryPath});
     cliServer = await serve(cli.ctx.injectRoutes()[0]);
     const before = await fetch(cliServer.origin + '/dsh-intelligence-check/api/state');
     assert.equal(before.status, 503);
     assert.equal(processes(dataDir).length, 0, 'the CLI host started a backend before the desktop');
 
-    await apply(desktop.ctx, {binaryPath, dataDir, desktop: true});
+    await apply(desktop.ctx, {binaryPath, desktop: true});
     desktopServer = await serve(desktop.ctx.injectRoutes()[0]);
     const after = await fetch(cliServer.origin + '/dsh-intelligence-check/api/state');
     assert.equal(after.status, 200, await after.clone().text());
@@ -238,19 +335,21 @@ test('a CLI host started before the desktop connects on a later request without 
     await cliServer?.close();
     await desktop.ctx.dispose().catch(() => {});
     await cli.ctx.dispose().catch(() => {});
+    restoreHome();
     rmSync(dataDir, {recursive: true, force: true});
   }
 });
 
 test('a CLI host joins the running desktop backend without starting or overriding it', async () => {
   const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-cli-join-'));
+  const restoreHome = setHome(dataDir);
   const desktop = profile({catalog: catalogFor('provider-one')});
   const cli = profile({catalog: catalogFor('provider-two')});
   let desktopServer, cliServer;
   try {
-    await apply(desktop.ctx, {binaryPath, dataDir, desktop: true});
+    await apply(desktop.ctx, {binaryPath, desktop: true});
     desktopServer = await serve(desktop.ctx.injectRoutes()[0]);
-    await apply(cli.ctx, {binaryPath, dataDir});
+    await apply(cli.ctx, {binaryPath});
     cliServer = await serve(cli.ctx.injectRoutes()[0]);
 
     const shared = await fetch(cliServer.origin + '/dsh-intelligence-check/api/state');
@@ -271,6 +370,7 @@ test('a CLI host joins the running desktop backend without starting or overridin
     await cliServer?.close();
     await desktop.ctx.dispose().catch(() => {});
     await cli.ctx.dispose().catch(() => {});
+    restoreHome();
     rmSync(dataDir, {recursive: true, force: true});
   }
 });
@@ -297,8 +397,9 @@ setInterval(() => {}, 1000);
 `, {mode: 0o700});
   const p = profile();
   let server;
+  const restoreHome = setHome(dataDir);
   try {
-    await apply(p.ctx, {binaryPath: fixture, dataDir, desktop: true});
+    await apply(p.ctx, {binaryPath: fixture, desktop: true});
     server = await serve(p.ctx.injectRoutes()[0]);
     const response = await fetch(server.origin + '/dsh-intelligence-check/api/results/html/preview');
     assert.equal(response.status, 200);
@@ -309,6 +410,7 @@ setInterval(() => {}, 1000);
     await server?.close();
     await p.ctx.dispose().catch(() => {});
     await new Promise(resolve => upstream.close(resolve));
+    restoreHome();
     rmSync(dataDir, {recursive: true, force: true});
   }
 });
@@ -316,8 +418,9 @@ setInterval(() => {}, 1000);
 test('the native page API rejects unauthenticated host requests', async () => {
   const p = profile();
   const dataDir = mkdtempSync(path.join(os.tmpdir(), 'dsh-ic-reject-'));
+  const restoreHome = setHome(dataDir);
   try {
-    await apply(p.ctx, {binaryPath, dataDir, desktop: true});
+    await apply(p.ctx, {binaryPath, desktop: true});
     const [route] = p.ctx.injectRoutes(401);
     const server = await serve(route);
     try {
@@ -328,6 +431,7 @@ test('the native page API rejects unauthenticated host requests', async () => {
     }
   } finally {
     await p.ctx.dispose();
+    restoreHome();
     rmSync(dataDir, {recursive: true, force: true});
   }
 });

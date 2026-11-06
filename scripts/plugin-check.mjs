@@ -9,7 +9,8 @@ import {pathToFileURL} from 'node:url';
 const root = process.env.PLUGIN_ROOT || path.resolve(import.meta.dirname, '..');
 const {apply} = await import(pathToFileURL(path.join(root, 'plugin/index.mjs')));
 const dir = await mkdtemp(path.join(os.tmpdir(), 'quality-plugin-'));
-const dataDir = path.join(dir, 'shared');
+const dataDir = path.join(dir, 'dsh-intelligence-check');
+process.env.DSH_HOME = dir;
 const disposers = [];
 const injections = [];
 const routes = [];
@@ -36,7 +37,6 @@ const ctx = {
 try {
   await apply(ctx, {
     desktop: true,
-    dataDir,
     ...(process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY
       ? {binaryPath: process.env.DSH_INTELLIGENCE_CHECK_TEST_BINARY}
       : {}),
