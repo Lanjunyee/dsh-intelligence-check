@@ -15,13 +15,15 @@ func TestManualCheckRecordsCompletionStates(t *testing.T) {
 		verdict  string
 		contains string
 		usageNil bool
+		finish   string
+		errCode  string
 	}{
-		{"normal", Generation{Answer: "46.24 inches", Finish: "stop"}, "passed", "", true},
-		{"empty", Generation{Answer: " \n", Finish: "stop"}, "empty", "空回答", true},
-		{"truncated", Generation{Answer: "partial answer", Finish: "max-tokens"}, "truncated", "截断", true},
-		{"aborted", Generation{Answer: "partial", Finish: "aborted", Error: &GenerationError{Code: "ABORTED", Message: "Request was aborted"}}, "unavailable", "检测已取消", true},
-		{"host-error", Generation{Answer: "partial", Finish: "error", Error: &GenerationError{Code: "RATE_LIMIT", Message: "quota exceeded"}}, "unavailable", "quota exceeded", true},
-		{"with-usage", Generation{Answer: "46.24 inches", Finish: "stop", Usage: usage(17)}, "passed", "", false},
+		{"normal", Generation{Answer: "46.24 inches", Finish: "stop"}, "passed", "", true, "stop", ""},
+		{"empty", Generation{Answer: " \n", Finish: "stop"}, "empty", "空回答", true, "stop", ""},
+		{"truncated", Generation{Answer: "partial answer", Finish: "max-tokens"}, "truncated", "截断", true, "max-tokens", ""},
+		{"aborted", Generation{Answer: "partial", Finish: "aborted", Error: &GenerationError{Code: "ABORTED", Message: "Request was aborted"}}, "unavailable", "检测已取消", true, "aborted", "ABORTED"},
+		{"host-error", Generation{Answer: "partial", Finish: "error", Error: &GenerationError{Code: "RATE_LIMIT", Message: "quota exceeded"}}, "unavailable", "quota exceeded", true, "error", "RATE_LIMIT"},
+		{"with-usage", Generation{Answer: "46.24 inches", Finish: "stop", Usage: usage(17)}, "passed", "", false, "stop", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
@@ -42,6 +44,9 @@ func TestManualCheckRecordsCompletionStates(t *testing.T) {
 			result := state.Results[0]
 			if result.Verdict != tc.verdict || !strings.Contains(result.Error, tc.contains) {
 				t.Fatalf("verdict=%q error=%q", result.Verdict, result.Error)
+			}
+			if result.Finish != tc.finish || result.ErrorCode != tc.errCode {
+				t.Fatalf("finish=%q error_code=%q", result.Finish, result.ErrorCode)
 			}
 			if (result.Usage == nil) != tc.usageNil {
 				t.Fatalf("usage presence wrong: %+v", result.Usage)

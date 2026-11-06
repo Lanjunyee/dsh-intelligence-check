@@ -1,4 +1,4 @@
-import { $, text, icon, hydrateIcons, syncSelect, dateTime, names, identity, modelLabel, usageLabel } from './ui.js';
+import { $, text, icon, hydrateIcons, syncSelect, dateTime, names, identity, modelLabel, usageLabel, usageTotals } from './ui.js';
 import { filteredHistory, renderHistory, renderComparison, exportFilteredHistory, resetHistoryLimit, loadMoreHistory } from './history.js';
 import { renderModelTrace, runModelTrace } from '../modeltrace/panel.js';
 import { analyzeAnswer } from './answer-analysis.js';
@@ -238,6 +238,10 @@ async function refresh() {
     $('#targetCount').textContent = targets.length;
     $('#statEnabled').textContent = targets.filter(t => t.enabled).length;
     $('#statRequests').textContent = dayCount();
+    const today = new Date().toISOString().slice(0, 10);
+    const usage = usageTotals(data.state.results.filter(record => new Date(record.time).toISOString().slice(0, 10) === today));
+    $('#statTokens').textContent = usage.reported ? `${usage.total}${usage.missing ? ` / ${usage.missing} 条缺失` : ''}` : '不可用';
+    $('#statTokens').title = '仅统计宿主已报告用量的已完成记录';
     syncSelect($('#model'), targets.map(t => [identity(t.provider, t.model), modelLabel(t.provider, t.model) + (t.enabled ? '' : '（监测关闭）')]));
     syncSelect($('#prompt'), data.prompts.map(p => [p.id, p.name]));
     const reported = new Map();

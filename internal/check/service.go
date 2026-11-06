@@ -57,6 +57,8 @@ type Result struct {
 	Answer        string    `json:"answer"`
 	Verdict       string    `json:"verdict"`
 	Error         string    `json:"error,omitempty"`
+	Finish        string    `json:"finish,omitempty"`
+	ErrorCode     string    `json:"error_code,omitempty"`
 	Time          time.Time `json:"time"`
 	Usage         *Usage    `json:"usage,omitempty"`
 	Batch         string    `json:"batch,omitempty"`
@@ -390,13 +392,18 @@ func (s *Service) run(ctx context.Context, id TargetID, p Prompt) {
 			s.state.Results[idx].Answer = partial
 			s.mu.Unlock()
 		}, GenerateParams{MaxTokens: DefaultMaxTokens})
-		r.Answer, r.Usage = gen.Answer, gen.Usage
+		r.Answer, r.Usage, r.Finish = gen.Answer, gen.Usage, gen.Finish
+		if gen.Error != nil {
+			r.ErrorCode = gen.Error.Code
+		}
 		switch {
 		case err != nil:
 			r.Verdict = "unavailable"
 			r.Error = err.Error()
 			if errors.Is(ctx.Err(), context.Canceled) {
-				r.Error = "检测已取消"
+				r.Error, r.Finish = "检测已取消", "aborted"
+			} else if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				r.Error = "检测超时"
 			}
 		case gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED"):
 			r.Verdict, r.Error = "unavailable", "检测已取消"

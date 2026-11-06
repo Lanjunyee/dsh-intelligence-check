@@ -31,8 +31,10 @@
   "scripts": {
     "test": "go test -race ./...",
     "test:plugin": "node --test plugin/*.test.mjs",
+    "test:ui": "node --test scripts/ui.test.mjs",
     "test:package": "node scripts/package-check.mjs",
     "test:dsh-profile": "node scripts/dsh-profile-check.mjs",
+    "test:dsh-lifecycle": "node scripts/dsh-lifecycle-check.mjs",
     "build:release": "node scripts/build-release.mjs",
     "test:install": "node scripts/install-check.mjs"
   }

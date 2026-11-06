@@ -78,7 +78,10 @@ func (s *Service) TriggerModelTrace(id TargetID) error {
 			ctx, cancel := context.WithTimeout(s.ctx, 180*time.Second)
 			gen, err := s.transport.Generate(ctx, id, r.PromptText, nil, GenerateParams{MaxTokens: DefaultMaxTokens})
 			cancel()
-			r.Answer, r.Usage, r.Verdict = gen.Answer, gen.Usage, "manual"
+			r.Answer, r.Usage, r.Finish, r.Verdict = gen.Answer, gen.Usage, gen.Finish, "manual"
+			if gen.Error != nil {
+				r.ErrorCode = gen.Error.Code
+			}
 			if err != nil {
 				r.Verdict, r.Error = "unavailable", err.Error()
 			} else if gen.Finish == "aborted" || (gen.Error != nil && gen.Error.Code == "ABORTED") {

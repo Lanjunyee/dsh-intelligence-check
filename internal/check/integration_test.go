@@ -3,6 +3,7 @@ package check
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -84,6 +85,102 @@ func TestRetestAndFailureRecords(t *testing.T) {
 				t.Fatalf("verdict=%v calls=%d", state.Results, calls.Load())
 			}
 		})
+	}
+}
+
+func TestMilkRetryRecordsEachRequestAndCountsBudget(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		return Generation{Answer: "48 inches", Finish: "stop"}, nil
+	}}
+	s := fixtureWithTransport(t, transport)
+	s.Configure(Config{DailyLimit: 2})
+	s.SetTarget(id, false)
+	if err := s.Trigger(id, "milk"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, s)
+	state, _ := s.Snapshot()
+	if len(state.Results) != 2 || state.Results[0].Verdict != "failed" || state.Results[1].Verdict != "failed" {
+		t.Fatalf("retest records not independent: %+v", state.Results)
+	}
+	calls, _ := transport.snapshot()
+	if len(calls) != 2 {
+		t.Fatalf("retest calls=%d", len(calls))
+	}
+	if err := s.Trigger(id, "milk"); err == nil || !strings.Contains(err.Error(), "预算") {
+		t.Fatalf("missing usage bypassed the request budget: %v", err)
+	}
+}
+
+func TestManualCheckCountsRequestBudget(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	transport := &fakeTransport{generate: func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		return Generation{Answer: "manual answer", Finish: "stop"}, nil
+	}}
+	s := fixtureWithTransport(t, transport)
+	s.Configure(Config{DailyLimit: 1})
+	s.SetTarget(id, false)
+	if err := s.Trigger(id, "repeat"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, s)
+	if err := s.Trigger(id, "milk"); err == nil || !strings.Contains(err.Error(), "预算") {
+		t.Fatalf("manual check did not consume the request budget: %v", err)
+	}
+}
+
+func TestCancelledTargetCanRunAgainAndDoesNotRetry(t *testing.T) {
+	id := TargetID{Provider: "provider-a", Model: "solo"}
+	started := make(chan struct{})
+	transport := &fakeTransport{generate: func(ctx context.Context, _ TargetID, _ string, progress func(string), _ GenerateParams) (Generation, error) {
+		if progress != nil {
+			progress("partial")
+		}
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-ctx.Done()
+		return Generation{Answer: "partial"}, ctx.Err()
+	}}
+	s := fixtureWithTransport(t, transport)
+	s.Configure(Config{DailyLimit: 5})
+	s.SetTarget(id, false)
+	if err := s.Trigger(id, "milk"); err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	if err := s.Trigger(id, "milk"); err == nil || !strings.Contains(err.Error(), "已有检测") {
+		t.Fatalf("same target was not merged: %v", err)
+	}
+	if err := s.CancelTest(id); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, s)
+	state, _ := s.Snapshot()
+	if len(state.Results) != 1 || state.Results[0].Answer != "partial" || state.Results[0].Verdict != "unavailable" {
+		t.Fatalf("cancel record lost: %+v", state.Results)
+	}
+	if state.Results[0].Finish != "aborted" {
+		t.Fatalf("cancel reason lost: %+v", state.Results[0])
+	}
+	calls, _ := transport.snapshot()
+	if len(calls) != 1 {
+		t.Fatalf("cancel was retested: %d", len(calls))
+	}
+
+	transport.generate = func(context.Context, TargetID, string, func(string), GenerateParams) (Generation, error) {
+		return Generation{Answer: "46.24 inches", Finish: "stop"}, nil
+	}
+	if err := s.Trigger(id, "milk"); err != nil {
+		t.Fatalf("target cannot run again after cancellation: %v", err)
+	}
+	waitIdle(t, s)
+	state, _ = s.Snapshot()
+	if len(state.Results) != 2 || state.Results[1].Verdict != "passed" {
+		t.Fatalf("second run did not complete: %+v", state.Results)
 	}
 }
 

@@ -12,11 +12,16 @@ function authorized(header, token) {
 
 function usageOf(usage) {
   if (!usage || typeof usage !== 'object') return undefined;
-  const normalized = {
-    input_tokens: Number.isFinite(usage.inputTokens) ? usage.inputTokens : 0,
-    output_tokens: Number.isFinite(usage.outputTokens) ? usage.outputTokens : 0,
-  };
-  if (Number.isFinite(usage.totalTokens)) normalized.total_tokens = usage.totalTokens;
+  const input = usage.inputTokens;
+  const output = usage.outputTokens;
+  const total = usage.totalTokens;
+  if (!Number.isFinite(input) || !Number.isFinite(output)) return undefined;
+  // The host adapter fills all-zero counts when the provider reported no
+  // usage. A non-empty request cannot legitimately consume zero tokens, so
+  // this is absence, not a reported zero.
+  if (input === 0 && output === 0 && !total) return undefined;
+  const normalized = {input_tokens: input, output_tokens: output};
+  if (Number.isFinite(total)) normalized.total_tokens = total;
   return normalized;
 }
 

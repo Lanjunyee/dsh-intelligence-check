@@ -356,6 +356,26 @@ test('missing host usage stays absent instead of becoming zero', async () => {
   }
 });
 
+test('usage chunk with no reported counts stays absent instead of zero', async () => {
+  const p = profile(undefined, {
+    stream: async function* () {
+      yield {type: 'text-delta', index: 0, text: '46.24 inches'};
+      yield {type: 'usage', usage: {}};
+      yield {type: 'finish', reason: {kind: 'stop'}};
+    },
+  });
+  try {
+    await apply(p.ctx, {binaryPath});
+    const console = await openConsole((await p.run()).text.match(/http:\/\/\S+/)[0]);
+    await addTarget(console, 'provider-one', 'shared-model');
+    await startCheck(console, 'provider-one', 'shared-model');
+    const record = await waitRecord(console, 'provider-one', 'shared-model', entry => entry.verdict !== 'running');
+    assert.equal(Object.hasOwn(record, 'usage'), false, 'unreported usage was fabricated as zero');
+  } finally {
+    await p.ctx.dispose();
+  }
+});
+
 test('empty and truncated host answers get distinct states and keep partial output', async () => {
   const p = profile(undefined, {
     stream: async function* (options) {

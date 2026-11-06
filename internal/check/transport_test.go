@@ -137,6 +137,33 @@ func TestHostBridgeRejectsMissingFinish(t *testing.T) {
 	}
 }
 
+func TestHostBridgeDisconnectKeepsPartialAnswerInRecord(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		fmt.Fprintln(w, `{"type":"delta","text":"partial"}`)
+		w.(http.Flusher).Flush()
+	}))
+	defer server.Close()
+	id := TargetID{Provider: "provider-one", Model: "shared-model"}
+	s, err := NewWithTransport(t.TempDir(), NewHostBridgeTransport(server.URL, "bridge-secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SetTarget(id, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Trigger(id, "milk"); err != nil {
+		t.Fatal(err)
+	}
+	waitIdle(t, s)
+	state, _ := s.Snapshot()
+	if len(state.Results) != 1 || state.Results[0].Verdict != "unavailable" ||
+		state.Results[0].Answer != "partial" || !strings.Contains(state.Results[0].Error, "完成事件") {
+		t.Fatalf("disconnect record: %+v", state.Results)
+	}
+}
+
 func TestHostBridgeHonoursCallerDeadline(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
