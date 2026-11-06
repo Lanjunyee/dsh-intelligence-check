@@ -6,7 +6,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import {
-  backendBinary, cookieHeader, createDshHarness, getState, openPageSession, pluginConfigOverride, postJSON,
+  backendBinary, cookieHeader, createDshHarness, openPageSession, pluginConfigOverride, postJSON, providerPatch,
 } from './dsh-harness.mjs';
 
 // Issue #16 regression at the confirmed public seams: real isolated DSH_HOME,
@@ -65,32 +65,13 @@ const controlled = http.createServer(async (request, response) => {
 await new Promise(resolve => controlled.listen(0, '127.0.0.1', resolve));
 const controlledPort = controlled.address().port;
 
-function provider(id, models) {
-  return `      ${id}:
-        displayName: ${id}
-        apiKeyEnv: DSH_IC_LOCAL_KEY
-        api: openai-completions
-        baseURL: http://127.0.0.1:${controlledPort}/v1
-        compat:
-          supportsDeveloperRole: false
-          maxTokensField: max_tokens
-        models:
-${models.map(model => `          - id: ${model}
-            name: ${model}
-            contextWindow: 32768
-            maxTokens: 1024
-            input: [text]`).join('\n')}`;
-}
-
 function patch(providerId) {
-  return `- id: llm-pi-ai
-  config:
-    providers:
-${provider(providerId, ['recover-model', 'slow-model'])}
-- id: agent-default-model
-  config:
-    provider: ${providerId}
-    model: recover-model
+  return `${providerPatch({
+    baseURL: `http://127.0.0.1:${controlledPort}/v1`,
+    provider: providerId,
+    models: ['recover-model', 'slow-model'].map(id => ({id, name: id})),
+    defaultModel: 'recover-model',
+  })}
 ${pluginConfigOverride()}`;
 }
 

@@ -260,6 +260,9 @@ DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tg
 DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-lifecycle-check.mjs
 DSH_PLUGIN_PACKAGE=/absolute/path/to/dist/dsh-intelligence-check-darwin-arm64.tgz node scripts/dsh-auto-check.mjs
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-profile-check.mjs
+DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-recovery-check.mjs
+DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-settings-check.mjs
+DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/native-attribution-check.mjs
 node scripts/plugin-check.mjs
 node scripts/cloudflare-check.mjs
 node scripts/browser-check.mjs
@@ -277,6 +280,9 @@ node scripts/auth-browser-check.mjs
 - `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和真实 DSH profile 验证原生侧边栏页面、用户级共享状态、单后台、桌面模型目录权威、跨 profile 会话、CLI/Web 仅连接不启动、HTML/SVG 预览、人工评审、ModelTrace、桌面退出/接管清理与 HMR 重载；浏览器可用时通过 Playwright 点击侧边栏并操作主区域页面；
 - `dsh-lifecycle-check.mjs` 使用真实宿主桥接验证完整/缺用量/错误/截断/取消/独立复测/同名目标隔离/取消后重跑与重启持久化；
 - `dsh-auto-check.mjs` 使用隔离 `DSH_HOME` 和本地受控模型服务，以短间隔验证自动检测默认关闭、仅监测目标 milk、无业务对话触发、关闭/移除停止、并发合并、预算与清理、重启配置及退出取消；浏览器可用时通过原生页面开启自动检测并设置间隔，关闭页面后继续观察定时调用；
+- `dsh-recovery-check.mjs` 使用隔离 `DSH_HOME`、真实 Go 后台和进程观测验证并发恢复只产生单后台、单调度，失败后可重试，桌面退出取消活动检测并清理，CLI/Web 仅连接不启动、不接管、不推送模型目录；
+- `dsh-settings-check.mjs` 使用隔离 `DSH_HOME`、真实 DSH profile、本地受控模型服务和 Playwright 路由拦截，验证设置保存失败保留草稿与修改标记、忙碌未执行不报成功、后台轮询不抢占输入焦点、失败后重试生效，以及首次聚焦、Escape 和关闭按钮交互；
+- `native-attribution-check.mjs` 使用隔离 `DSH_HOME`、本地受控模型服务和真实浏览器验证模型归因失败在模型指纹页可见，正常报告与空状态语义不变；
 - `plugin-check.mjs` 验证已安装包的原生插件启动共享后台、提供页面 API 并清理进程；
 - `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭（内部兼容接口）；
 - `browser-check.mjs` 使用真实隔离 DSH profile、宿主配置的受控 OpenAI 兼容服务和 Playwright，验证七题原文、provider + model 路由、实时增量、历史/评审/导出/下载/复制、HTML/SVG 隔离预览、手动 ModelTrace、回答/评估/用量持久化与业务会话并行；`PLAYWRIGHT_MODULE` 可指定模块位置；

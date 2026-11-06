@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRequire} from 'node:module';
 import {existsSync} from 'node:fs';
 import {rm} from 'node:fs/promises';
 import http from 'node:http';
 import {
-  backendBinary, createDshHarness, getState, openPageSession, pluginConfigOverride,
+  backendBinary, createDshHarness, getState, launchChromium, openNativePage, openPageSession,
+  pluginConfigOverride, providerPatch,
 } from './dsh-harness.mjs';
 
 // Issue #14: settings save feedback and draft/focus retention on the real
@@ -32,33 +32,14 @@ const {home, work, hosts, dshRun, installProfile, bootProfile, stopHost} = await
 });
 assert.ok(existsSync(backendBinary()), '缺少后台二进制：请先 go build -o bin/quality-check ./cmd/quality-check');
 
-const patch = `- id: llm-pi-ai
-  config:
-    providers:
-      settings-provider:
-        displayName: Settings Provider
-        apiKeyEnv: DSH_IC_LOCAL_KEY
-        api: openai-completions
-        baseURL: http://127.0.0.1:${port}/v1
-        compat:
-          supportsDeveloperRole: false
-          maxTokensField: max_tokens
-        models:
-          - id: settings-model
-            name: Settings Model
-            contextWindow: 32768
-            maxTokens: 1024
-            input: [text]
-- id: agent-default-model
-  config:
-    provider: settings-provider
-    model: settings-model
+const patch = `${providerPatch({
+  baseURL: `http://127.0.0.1:${port}/v1`,
+  provider: 'settings-provider',
+  displayName: 'Settings Provider',
+  models: [{id: 'settings-model', name: 'Settings Model'}],
+  defaultModel: 'settings-model',
+})}
 ${pluginConfigOverride()}`;
-
-const bundledPlaywright = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
-const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundledPlaywright) ? bundledPlaywright : '');
-assert.ok(playwrightPath && existsSync(playwrightPath), `缺少 Playwright 模块：${playwrightPath}`);
-const {chromium} = createRequire(import.meta.url)(playwrightPath);
 
 function modal(page) {
   return page.locator('.dic-modal');
@@ -88,30 +69,6 @@ async function draftValues(page) {
     daily: await modalNumbers(page).nth(1).inputValue(),
   };
 }
-async function openNativePage(browser, login) {
-  const page = await browser.newPage();
-  await page.goto(login);
-  const entry = page.getByText('模型质量检测', {exact: true}).first();
-  await entry.waitFor({timeout: 30000});
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const notice = page.getByRole('button', {name: '继续'});
-    if (await notice.isVisible().catch(() => false)) {
-      await notice.click();
-      await page.waitForTimeout(200);
-    }
-    try {
-      await entry.click({timeout: 3000});
-      break;
-    } catch (error) {
-      if (page.isClosed()) throw error;
-      await page.waitForTimeout(300);
-    }
-  }
-  await page.locator('.dic-page h1').waitFor({timeout: 30000});
-  await page.getByRole('tab', {name: /模型监测/}).click();
-  await page.waitForFunction(() => document.querySelector('.dic-add select')?.options.length > 0, {}, {timeout: 10000});
-  return page;
-}
 
 test('native settings retain draft and feedback, and keep input focus across polling', async t => {
   let browser;
@@ -127,18 +84,14 @@ test('native settings retain draft and feedback, and keep input focus across pol
     assert.equal(payload.state.config.auto_enabled, false);
     assert.equal(payload.state.config.interval_seconds, 900);
 
-    const launch = {headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge'};
-    if (process.env.PLAYWRIGHT_EXECUTABLE) {
-      launch.executablePath = process.env.PLAYWRIGHT_EXECUTABLE;
-      delete launch.channel;
-    }
-    browser = await chromium.launch(launch);
+    browser = await launchChromium();
 
     const step = async (name, fn) => {
       await t.test(name, async () => {
         let page;
         try {
-          page = await openNativePage(browser, host.login());
+          page = await openNativePage(browser, host.login(), {tab: /模型监测/});
+          await page.waitForFunction(() => document.querySelector('.dic-add select')?.options.length > 0, {}, {timeout: 10000});
           page.on('pageerror', error => pageErrors.push(error.message));
           await fn(page);
         } catch (error) {

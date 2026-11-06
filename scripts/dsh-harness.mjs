@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {spawn, spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {mkdtemp, writeFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import {hostTarget} from '../plugin/platform.mjs';
@@ -115,4 +116,71 @@ export async function getState(client) {
   const response = await fetch(client.origin + '/dsh-intelligence-check/api/state', {headers: {cookie: client.session}});
   assert.equal(response.status, 200, `page API state failed with ${response.status}`);
   return response.json();
+}
+
+// Shared Playwright loading boundary for the real native-page regressions.
+export async function launchChromium() {
+  const bundled = '/Applications/ChatGPT.app/Contents/Resources/cua_node/lib/node_modules/playwright';
+  const playwrightPath = process.env.PLAYWRIGHT_MODULE || (existsSync(bundled) ? bundled : '');
+  assert.ok(playwrightPath && existsSync(playwrightPath), `缺少 Playwright 模块：${playwrightPath}`);
+  const {chromium} = createRequire(import.meta.url)(playwrightPath);
+  const options = {headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge'};
+  if (process.env.PLAYWRIGHT_EXECUTABLE) {
+    options.executablePath = process.env.PLAYWRIGHT_EXECUTABLE;
+    delete options.channel;
+  }
+  return chromium.launch(options);
+}
+
+// Opens the DSH-native page: host login, preview notice dismissal, page entry
+// and the requested tab. Callers keep their own assertions and teardown.
+export async function openNativePage(browser, login, {tab}) {
+  const page = await browser.newPage();
+  page.on('pageerror', error => console.error('[ui] page error:', error.message));
+  await page.goto(login);
+  const entry = page.getByText('模型质量检测', {exact: true}).first();
+  await entry.waitFor({timeout: 30000});
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const notice = page.getByRole('button', {name: '继续'});
+    if (await notice.isVisible().catch(() => false)) {
+      await notice.click();
+      await page.waitForTimeout(200);
+    }
+    try {
+      await entry.click({timeout: 3000});
+      break;
+    } catch (error) {
+      if (page.isClosed()) throw error;
+      await page.waitForTimeout(300);
+    }
+  }
+  await page.locator('.dic-page h1').waitFor({timeout: 30000});
+  await page.getByRole('tab', {name: tab}).click();
+  return page;
+}
+
+// Controlled OpenAI-compatible provider fixture for the regression scripts;
+// the compat fields stay identical so the fixtures cannot drift apart.
+export function providerPatch({baseURL, provider, displayName = provider, models, defaultModel}) {
+  return `- id: llm-pi-ai
+  config:
+    providers:
+      ${provider}:
+        displayName: ${displayName}
+        apiKeyEnv: DSH_IC_LOCAL_KEY
+        api: openai-completions
+        baseURL: ${baseURL}
+        compat:
+          supportsDeveloperRole: false
+          maxTokensField: max_tokens
+        models:
+${models.map(model => `          - id: ${model.id}
+            name: ${model.name}
+            contextWindow: 32768
+            maxTokens: 1024
+            input: [text]`).join('\n')}
+- id: agent-default-model
+  config:
+    provider: ${provider}
+    model: ${defaultModel}`;
 }

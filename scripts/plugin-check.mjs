@@ -9,7 +9,7 @@ import {pathToFileURL} from 'node:url';
 const root = process.env.PLUGIN_ROOT || path.resolve(import.meta.dirname, '..');
 const {apply} = await import(pathToFileURL(path.join(root, 'plugin/index.mjs')));
 const dir = await mkdtemp(path.join(os.tmpdir(), 'quality-plugin-'));
-const dataDir = path.join(dir, 'dsh-intelligence-check');
+const expectedDataDir = path.join(dir, 'dsh-intelligence-check');
 process.env.DSH_HOME = dir;
 const disposers = [];
 const injections = [];
@@ -63,12 +63,12 @@ try {
   await new Promise(resolve => server.close(resolve));
   for (let i = 0; i < 100; i++) {
     const left = execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
-      .split('\n').filter(line => line.includes(dataDir));
+      .split('\n').filter(line => line.includes(expectedDataDir));
     if (left.length === 0) break;
     await new Promise(resolve => setTimeout(resolve, 50));
   }
   const left = execFileSync('ps', ['-axo', 'pid=,command='], {encoding: 'utf8'})
-    .split('\n').filter(line => line.includes(dataDir));
+    .split('\n').filter(line => line.includes(expectedDataDir));
   assert.deepEqual(left, [], 'plugin disposal left the shared backend running');
   console.log('PASS: native plugin starts the shared desktop backend, serves the page API and cleans up');
 } finally {
