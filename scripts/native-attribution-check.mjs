@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {rm} from 'node:fs/promises';
-import http from 'node:http';
 import {
   createDshHarness, launchChromium, openNativePage, openPageSession, pluginConfigOverride, postJSON, providerPatch,
+  startControlledModelServer,
 } from './dsh-harness.mjs';
 
 // Issue #15: the native ModelTrace page must explain an attribution failure
@@ -27,37 +27,16 @@ let controlled;
 let browser;
 let failure;
 try {
-  controlled = http.createServer(async (request, response) => {
-    if (request.url?.endsWith('/models')) {
-      response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({object: 'list', data: [attributable, rejected].map(id => ({id, object: 'model'}))}));
-      return;
-    }
-    let raw = '';
-    for await (const chunk of request) raw += chunk;
-    const body = JSON.parse(raw);
-    const content = body.messages?.at(-1)?.content;
-    const prompt = typeof content === 'string' ? content : (content || []).map(part => part.text || '').join('');
-    const challenge = prompt.match(/(\d+)\s*个\s*1 到 355/);
-    if (!challenge) {
-      const message = `受控模型收到非指纹挑战题目，无法生成预期回答：${prompt.slice(0, 200)}`;
-      console.error(message);
-      response.writeHead(500, {'content-type': 'application/json'});
-      response.end(JSON.stringify({error: {message}}));
-      return;
-    }
-    const answer = body.model === rejected
-      ? 'I cannot complete this task.'
-      : traceSequence(Number(challenge[1]));
-    response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
-    const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
-    event({choices: [{index: 0, delta: {content: answer}}]});
-    event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
-    event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17}});
-    response.end('data: [DONE]\n\n');
+  const controlledModel = await startControlledModelServer({
+    models: [attributable, rejected],
+    answer: ({prompt, body}) => {
+      const challenge = prompt.match(/(\d+)\s*个\s*1 到 355/);
+      if (!challenge) return null;
+      return body.model === rejected ? 'I cannot complete this task.' : traceSequence(Number(challenge[1]));
+    },
   });
-  await new Promise(resolve => controlled.listen(0, '127.0.0.1', resolve));
-  const port = controlled.address().port;
+  controlled = controlledModel.server;
+  const port = controlledModel.port;
 
   async function selectTraceModel(page, model) {
     const select = page.locator('.dic-test-controls select').first();

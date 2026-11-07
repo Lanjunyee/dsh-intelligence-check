@@ -263,6 +263,7 @@ DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-recovery-check.mjs
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/dsh-settings-check.mjs
 DSH_INTELLIGENCE_CHECK_TEST_BINARY=/absolute/path/to/quality-check node scripts/native-attribution-check.mjs
+PLAYWRIGHT_MODULE=/absolute/path/to/playwright PLAYWRIGHT_EXECUTABLE=/absolute/path/to/chrome-headless-shell npm run test:native-work-page
 node scripts/plugin-check.mjs
 node scripts/cloudflare-check.mjs
 node scripts/browser-check.mjs
@@ -283,6 +284,7 @@ node scripts/auth-browser-check.mjs
 - `dsh-recovery-check.mjs` 使用隔离 `DSH_HOME`、真实 Go 后台和进程观测验证并发恢复只产生单后台、单调度，失败后可重试，桌面退出取消活动检测并清理，CLI/Web 仅连接不启动、不接管、不推送模型目录；
 - `dsh-settings-check.mjs` 使用隔离 `DSH_HOME`、真实 DSH profile、本地受控模型服务和 Playwright 路由拦截，验证设置保存失败保留草稿与修改标记、忙碌未执行不报成功、后台轮询不抢占输入焦点、失败后重试生效，以及首次聚焦、Escape 和关闭按钮交互；
 - `native-attribution-check.mjs` 使用隔离 `DSH_HOME`、本地受控模型服务和真实浏览器验证模型归因失败在模型指纹页可见，正常报告与空状态语义不变；
+- `native-work-page-check.mjs`（`npm run test:native-work-page`）使用隔离 `DSH_HOME`、本地受控模型服务和真实浏览器验证检测工作页：390px 下展开全部候选后页面不被撑宽、候选表与模型监测表在各自容器内滚动、浅深主题可读，并核对代码回答排版；需要 Playwright，可用 `PLAYWRIGHT_MODULE` 指定模块位置、`PLAYWRIGHT_EXECUTABLE` 指定浏览器可执行文件；
 - `plugin-check.mjs` 验证已安装包的原生插件启动共享后台、提供页面 API 并清理进程；
 - `cloudflare-check.mjs` 验证 Go 后台临时 HTTPS 入口、会话交换和关闭（内部兼容接口）；
 - `browser-check.mjs` 使用真实隔离 DSH profile、宿主配置的受控 OpenAI 兼容服务和 Playwright，验证七题原文、provider + model 路由、实时增量、历史/评审/导出/下载/复制、HTML/SVG 隔离预览、手动 ModelTrace、回答/评估/用量持久化与业务会话并行；`PLAYWRIGHT_MODULE` 可指定模块位置；

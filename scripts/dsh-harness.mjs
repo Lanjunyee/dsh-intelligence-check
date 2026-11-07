@@ -2,15 +2,16 @@ import assert from 'node:assert/strict';
 import {execFileSync, spawn, spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import {mkdtemp, writeFile} from 'node:fs/promises';
+import http from 'node:http';
 import {createRequire} from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import {hostTarget} from '../plugin/platform.mjs';
 
 // Shared real-DSH harness for the profile, lifecycle and automatic checks.
-// Each caller still owns its controlled model service, patch content and
-// assertions; only the isolated home, install/boot/stop and page API session
-// exchange are shared here.
+// Each caller still owns its patch content and assertions; the isolated home,
+// install/boot/stop, page API session exchange and the controlled
+// OpenAI-compatible model server boundary are shared here.
 export const root = path.resolve(import.meta.dirname, '..');
 export const dsh = process.env.DSH_BINARY || (existsSync('/usr/local/bin/dsh') ? '/usr/local/bin/dsh' : 'dsh');
 export const packageSpec = process.env.DSH_PLUGIN_PACKAGE || root;
@@ -165,6 +166,39 @@ export async function launchChromium() {
     delete options.channel;
   }
   return chromium.launch(options);
+}
+
+// 受控 OpenAI 兼容模型服务：调用方只提供模型列表与回答函数，共用的
+// 请求解析、SSE 帧和缺失回答错误在此维护。
+export async function startControlledModelServer({models, answer}) {
+  const server = http.createServer(async (request, response) => {
+    if (request.url?.endsWith('/models')) {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({object: 'list', data: models.map(id => ({id, object: 'model'}))}));
+      return;
+    }
+    let raw = '';
+    for await (const chunk of request) raw += chunk;
+    const body = JSON.parse(raw);
+    const content = body.messages?.at(-1)?.content;
+    const prompt = typeof content === 'string' ? content : (content || []).map(part => part.text || '').join('');
+    const value = await answer({prompt, body});
+    if (typeof value !== 'string') {
+      const message = `受控模型收到未准备回答的题目：${prompt.slice(0, 200)}`;
+      console.error(message);
+      response.writeHead(500, {'content-type': 'application/json'});
+      response.end(JSON.stringify({error: {message}}));
+      return;
+    }
+    response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
+    const event = chunk => response.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    event({choices: [{index: 0, delta: {content: value}}]});
+    event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
+    event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17}});
+    response.end('data: [DONE]\n\n');
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  return {server, port: server.address().port};
 }
 
 // Opens the DSH-native page: host login, preview notice dismissal, page entry

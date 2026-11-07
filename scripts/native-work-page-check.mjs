@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import {readFile, rm} from 'node:fs/promises';
-import http from 'node:http';
 import {
   createDshHarness, getState, launchChromium, openNativePage, openPageSession, pluginConfigOverride, postJSON, providerPatch,
+  startControlledModelServer,
 } from './dsh-harness.mjs';
 import {analyzeGlobalOutputs} from '../internal/check/web/modeltrace/fingerprint-core.js';
 
-// Issue #23: measured through the isolated native DSH page, not CSS strings.
-// The narrowed page must not be widened by the expanded attribution candidate
-// table, tables that need horizontal room must scroll inside their own
-// container, and the code-answer typography must match the documented variant.
+// Issue #23：通过隔离的原生 DSH 页面测量实际渲染结果，而不是匹配 CSS 字符串。
+// 窄屏页面不得被展开的模型归因候选表撑宽；需要横向空间的表格必须在自身
+// 容器内滚动；代码回答排版必须与文档中的变体一致。
 const bank = JSON.parse(await readFile(new URL('../internal/check/web/modeltrace/unified_bank.json', import.meta.url), 'utf8'));
 const {home, work, hosts, dshRun, installProfile, bootProfile, stopHost} = await createDshHarness({
   prefix: 'dsh-ic-work-page',
@@ -59,35 +58,15 @@ let controlled;
 let browser;
 let failure;
 try {
-  controlled = http.createServer(async (request, response) => {
-    if (request.url?.endsWith('/models')) {
-      response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({object: 'list', data: [{id: model, object: 'model'}]}));
-      return;
-    }
-    let raw = '';
-    for await (const chunk of request) raw += chunk;
-    const body = JSON.parse(raw);
-    const content = body.messages?.at(-1)?.content;
-    const prompt = typeof content === 'string' ? content : (content || []).map(part => part.text || '').join('');
-    const challenge = prompt.match(/(\d+)\s*个\s*1 到 355/);
-    const answer = challenge ? traceSequence(Number(challenge[1])) : answerFor(prompt);
-    if (!answer) {
-      const message = `受控模型收到未准备回答的题目：${prompt.slice(0, 160)}`;
-      console.error(message);
-      response.writeHead(500, {'content-type': 'application/json'});
-      response.end(JSON.stringify({error: {message}}));
-      return;
-    }
-    response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
-    const event = value => response.write(`data: ${JSON.stringify(value)}\n\n`);
-    event({choices: [{index: 0, delta: {content: answer}}]});
-    event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
-    event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17}});
-    response.end('data: [DONE]\n\n');
+  const controlledModel = await startControlledModelServer({
+    models: [model],
+    answer: ({prompt}) => {
+      const challenge = prompt.match(/(\d+)\s*个\s*1 到 355/);
+      return challenge ? traceSequence(Number(challenge[1])) : answerFor(prompt);
+    },
   });
-  await new Promise(resolve => controlled.listen(0, '127.0.0.1', resolve));
-  const port = controlled.address().port;
+  controlled = controlledModel.server;
+  const port = controlledModel.port;
 
   const version = dshRun(['--version']).stdout.trim();
   assert.match(version, /^\d+\.\d+\.\d+/);
@@ -145,6 +124,15 @@ ${pluginConfigOverride()}`);
     return measured;
   }
 
+  async function assertCandidateTableUsesWidth(label) {
+    const measured = await measureCandidateTable();
+    assert.ok(measured.pageClientWidth > 740,
+      `${label}：宽屏检查要求宿主内容宽度大于 740px（实际 ${measured.pageClientWidth}px）`);
+    assert.ok(measured.tableWidth >= measured.containerClientWidth - 1,
+      `${label}：候选表未利用可用容器宽度（表格 ${measured.tableWidth}px，容器 ${measured.containerClientWidth}px）`);
+    return measured;
+  }
+
   async function assertCandidateTableContained(label) {
     const measured = await measureCandidateTable();
     await assertNarrowPageFits(label);
@@ -167,8 +155,7 @@ ${pluginConfigOverride()}`);
     await page.waitForTimeout(80);
   }
 
-  // The report comes from the same deterministic controlled challenge answers
-  // and committed bank as the existing attribution regression.
+  // 报告来自与现有归因回归相同的确定性受控挑战回答和已提交指纹库。
   await page.getByRole('button', {name: '运行三条指纹挑战'}).click();
   await page.locator('.dic-trace-report').waitFor({timeout: 60000});
   await page.locator('details.dic-details summary', {hasText: /全部 \d+ 个候选/}).click();
@@ -192,44 +179,60 @@ ${pluginConfigOverride()}`);
     ], `候选排序或概率在第 ${index + 1} 行发生变化`);
   });
 
-  // Wide page, then narrow, then restore: the candidate table must not widen
-  // the page in any of those states.
-  const wide = await measurePage();
-  assert.ok(wide.scrollWidth <= wide.clientWidth + 1,
-    `宽屏页面被横向撑宽（clientWidth ${wide.clientWidth}px，scrollWidth ${wide.scrollWidth}px）`);
+  // 宽屏、缩窄、再恢复三种状态下，候选表都不得撑宽页面；
+  // 宽屏下候选表还应实际利用可用容器宽度。
+  const wide = await assertPageFits('宽屏展开全部候选');
+  const wideTable = await assertCandidateTableUsesWidth('宽屏展开全部候选');
   await page.setViewportSize({width: narrowWidth, height: 900});
   await page.waitForTimeout(150);
   const narrow = await assertCandidateTableContained('390px 展开全部候选');
   await page.setViewportSize({width: 1280, height: 900});
   await page.waitForTimeout(150);
-  await assertPageFits('恢复宽屏后');
+  const restored = await assertPageFits('恢复宽屏后');
+  const restoredTable = await assertCandidateTableUsesWidth('恢复宽屏后');
   await page.setViewportSize({width: narrowWidth, height: 900});
   await page.waitForTimeout(150);
 
-  // Light and dark themes must keep the candidate table readable without
-  // bringing horizontal scrolling back to the page itself.
+  // 浅色和深色主题下候选表都应保持可读，且不得让页面重新出现横向滚动。
   await selectDark(false);
   const light = await page.locator('.dic-page').evaluate(element => {
     const style = getComputedStyle(element);
-    const header = element.querySelector('#dic-view-fingerprint details.dic-details th');
-    return {background: style.backgroundColor, color: style.color, headerColor: getComputedStyle(header).color};
+    const table = element.querySelector('#dic-view-fingerprint details.dic-details table');
+    return {
+      background: style.backgroundColor,
+      color: style.color,
+      headerColor: getComputedStyle(table.querySelector('th')).color,
+      cellColor: getComputedStyle(table.querySelector('td')).color,
+    };
   });
   await selectDark(true);
   const dark = await page.locator('.dic-page').evaluate(element => {
     const style = getComputedStyle(element);
-    const header = element.querySelector('#dic-view-fingerprint details.dic-details th');
-    return {background: style.backgroundColor, color: style.color, headerColor: getComputedStyle(header).color};
+    const table = element.querySelector('#dic-view-fingerprint details.dic-details table');
+    return {
+      background: style.backgroundColor,
+      color: style.color,
+      headerColor: getComputedStyle(table.querySelector('th')).color,
+      cellColor: getComputedStyle(table.querySelector('td')).color,
+    };
   });
   assert.notEqual(light.background, dark.background, '深色主题未切换页面背景');
   assert.notEqual(light.color, dark.color, '深色主题未切换页面文字');
-  const lightContrast = contrast(light.color, light.background);
-  const darkContrast = contrast(dark.color, dark.background);
-  assert.ok(lightContrast >= 4.5, '浅色主题候选表文字对比度不足');
-  assert.ok(darkContrast >= 4.5, '深色主题候选表文字对比度不足');
+  const pageContrast = {light: contrast(light.color, light.background), dark: contrast(dark.color, dark.background)};
+  const candidateContrast = {
+    lightHeader: contrast(light.headerColor, light.background),
+    lightCell: contrast(light.cellColor, light.background),
+    darkHeader: contrast(dark.headerColor, dark.background),
+    darkCell: contrast(dark.cellColor, dark.background),
+  };
+  assert.ok(pageContrast.light >= 4.5, '浅色主题页面文字对比度不足');
+  assert.ok(pageContrast.dark >= 4.5, '深色主题页面文字对比度不足');
+  for (const [label, value] of Object.entries(candidateContrast)) {
+    assert.ok(value >= 4.5, `${label}：候选表文字对比度不足（${value.toFixed(2)}:1）`);
+  }
   await assertCandidateTableContained('深色主题 390px 展开全部候选');
 
-  // The monitoring table keeps its own scroll container and operations remain
-  // reachable at the narrow width.
+  // 模型监测表保留自己的滚动容器，窄屏下操作仍可到达。
   await page.getByRole('tab', {name: /模型监测/}).click();
   await page.locator('#dic-view-models h2', {hasText: '检测目标'}).waitFor();
   await assertNarrowPageFits('390px 模型监测表');
@@ -267,18 +270,34 @@ ${pluginConfigOverride()}`);
   const deleteBox = await deleteButton.boundingBox();
   assert.ok(deleteBox && deleteBox.x >= 0 && deleteBox.x + deleteBox.width <= narrowWidth + 1,
     '模型监测表的操作在窄屏中不可达');
-  await selectDark(true);
-  const monitorDark = await page.locator('.dic-page').evaluate(element => {
-    const style = getComputedStyle(element);
-    return {background: style.backgroundColor, color: style.color};
+  const measureMonitorColors = () => page.locator('#dic-view-models').evaluate(element => {
+    const pageElement = element.closest('.dic-page');
+    const style = getComputedStyle(pageElement);
+    const table = element.querySelector('.dic-table');
+    return {
+      background: style.backgroundColor,
+      color: style.color,
+      headerColor: getComputedStyle(table.querySelector('th')).color,
+      cellColor: getComputedStyle(table.querySelector('td')).color,
+    };
   });
-  const monitorDarkContrast = contrast(monitorDark.color, monitorDark.background);
-  assert.ok(monitorDarkContrast >= 4.5, '深色主题模型监测表文字对比度不足');
+  const monitorDark = await measureMonitorColors();
   await selectDark(false);
+  const monitorLight = await measureMonitorColors();
+  const monitorContrast = {
+    darkPage: contrast(monitorDark.color, monitorDark.background),
+    lightPage: contrast(monitorLight.color, monitorLight.background),
+    darkHeader: contrast(monitorDark.headerColor, monitorDark.background),
+    lightHeader: contrast(monitorLight.headerColor, monitorLight.background),
+    darkCell: contrast(monitorDark.cellColor, monitorDark.background),
+    lightCell: contrast(monitorLight.cellColor, monitorLight.background),
+  };
+  for (const [label, value] of Object.entries(monitorContrast)) {
+    assert.ok(value >= 4.5, `${label}：模型监测表文字对比度不足（${value.toFixed(2)}:1）`);
+  }
 
-  // Exactly the delivered code-answer typography: host monospace, 13px,
-  // 1.95 line height (25.35px). Ordinary code content stays 12px / 1.8.
-  await selectDark(false);
+  // 代码回答的交付排版：宿主等宽字体、13px、1.95 行高（25.35px）。
+  // 普通代码内容保持 12px / 1.8。
   await page.getByRole('tab', {name: /质量题库/}).click();
   const codeTypography = {};
   for (const [promptId, marker] of [['html', 'html-answer-marker'], ['svg', 'svg-answer-marker'], ['map', 'python-answer-marker']]) {
@@ -319,7 +338,10 @@ ${pluginConfigOverride()}`);
     candidateCount: expected.results.length,
     narrow,
     wide,
-    theme: {light, dark, lightContrast, darkContrast, monitorDark, monitorDarkContrast},
+    wideTable,
+    restored,
+    restoredTable,
+    theme: {light, dark, pageContrast, candidateContrast, monitorLight, monitorDark, monitorContrast},
     monitor: {headers, ...monitor, scroll: monitorBox, deleteButton: deleteBox},
     codeTypography,
     promptCode,

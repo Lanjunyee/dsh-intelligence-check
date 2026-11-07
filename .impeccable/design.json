@@ -47,7 +47,7 @@
         "name": "code-answer",
         "refersTo": "typography.code-answer",
         "appliesTo": "HTML、SVG 与世界海陆地图题目的原始回答；宿主等宽字体、13px、1.95 行高。",
-        "distinctFrom": "typography.code 保持 12px、1.8 行高，用于原始提示词、预览代码与计数等普通代码内容。"
+        "distinctFrom": "typography.code 保持 12px、1.8 行高，用于原始提示词、预览代码等普通代码内容；标签计数使用 11px 等宽次文字，独立于普通代码排版。"
       }
     ],
     "tables": [
