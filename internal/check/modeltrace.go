@@ -103,7 +103,7 @@ func (s *Service) TriggerModelTrace(id TargetID) error {
 				markSkipped(i, "批次已取消，未开始")
 				break
 			}
-			callCtx, callCancel := context.WithTimeout(batchCtx, 180*time.Second)
+			callCtx, callCancel := context.WithTimeout(batchCtx, CheckTimeout)
 			gen, err := s.transport.Generate(callCtx, id, r.PromptText, nil, GenerateParams{MaxTokens: DefaultMaxTokens})
 			timedOut := errors.Is(callCtx.Err(), context.DeadlineExceeded)
 			cancelled := batchCtx.Err() != nil

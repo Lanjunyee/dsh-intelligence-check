@@ -17,6 +17,9 @@ import (
 // bridge existed.
 const DefaultMaxTokens = 8192
 
+// CheckTimeout 统一质量检测与模型归因调用的超时时间。
+const CheckTimeout = 10 * time.Minute
+
 // Usage is the token usage reported by the host. A nil Usage means the host
 // did not report usage; consumers must not substitute zero.
 type Usage struct {
@@ -72,7 +75,7 @@ func NewHostBridgeTransport(url, token string) *HostBridgeTransport {
 	return &HostBridgeTransport{
 		URL:    strings.TrimRight(url, "/"),
 		Token:  token,
-		Client: &http.Client{Timeout: 180 * time.Second},
+		Client: &http.Client{Timeout: CheckTimeout},
 	}
 }
 

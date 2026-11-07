@@ -445,7 +445,7 @@ func (s *Service) Trigger(id TargetID, prompt string) error {
 	if s.testCancels == nil {
 		s.testCancels = make(map[TargetID]context.CancelFunc)
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 180*time.Second)
+	ctx, cancel := context.WithTimeout(s.ctx, CheckTimeout)
 	s.testCancels[id] = cancel
 	s.wg.Add(1)
 	go s.run(ctx, id, p)

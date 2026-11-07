@@ -6,7 +6,7 @@
     "type": "git",
     "url": "git+https://github.com/Lanjunyee/dsh-intelligence-check.git"
   },
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "main": "./plugin/index.mjs",
   "exports": {
