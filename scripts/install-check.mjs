@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import {hostTarget} from '../plugin/platform.mjs';
 const root=path.resolve(import.meta.dirname,'..');
 const {goos:platform,goarch:arch,suffix}=hostTarget();
-const name=`dsh-intelligence-check-${platform}-${arch}`;
+const universal=process.argv.includes('--universal');
+const name=universal?'dsh-intelligence-check':`dsh-intelligence-check-${platform}-${arch}`;
 const dir=await fs.mkdtemp(path.join(os.tmpdir(),'quality-install-'));
 try{
  const unpack=spawnSync('tar',['-xzf',path.join(root,'dist',name+'.tgz'),'-C',dir],{stdio:'inherit'});assert.equal(unpack.status,0);
@@ -19,7 +20,7 @@ try{
  assert.equal(pkg.exports?.['./client'],'./plugin/client.js');
  assert.equal(pkg.engines.dsh,'>=0.2.0 <0.3.0');
  assert.equal(pkg.icon,'./assets/plugin-icon.png');
- const binary=path.join(installed,'bin',`quality-check${suffix}`);
+ const binary=path.join(installed,'bin',universal?`quality-check-${platform}-${arch}${suffix}`:`quality-check${suffix}`);
  const mode=(await fs.stat(binary)).mode;
  assert.ok(mode&0o111,'发行包后台二进制没有可执行权限');
  await fs.access(path.join(installed,'plugin','index.mjs'));

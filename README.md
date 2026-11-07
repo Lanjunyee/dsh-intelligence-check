@@ -24,17 +24,21 @@ DSH 侧边栏 -> 主区域原生检测页面 -> 手动/定时质量检测 -> 插
 
 同一用户、同一台机器的所有 DSH 工作目录与 profile 共享检测配置、监测目标、记录、人工评审及一套后台。多个入口同时使用时不会因数据目录锁出现第二个入口不可用；只有一套自动检测调度。切换页面或关闭检测面板不停止自动检测；退出 DSH 桌面应用时插件后台及活动任务一起结束。
 
+## 界面预览
+
+[质量题库](assets/screenshots/quality-bank.png)、[检测记录](assets/screenshots/history.png)与[模型归因](assets/screenshots/model-attribution.png)的截图由隔离的 DSH Web 宿主实际渲染，使用本地受控演示模型生成数据，用于展示功能与布局。市场展示顺序由根目录 `screenshots.json` 声明。
+
 ## 安装
 
 本包以 DSH 官方 bundle 分发：`package.json` 声明 `dsh.bundle.patch`、`dsh.bundle.platforms` 与 `dsh.client`（`platform: web`），`cordis.patch.yml` 插入 `dsh-intelligence-check` 插件行，`exports["./client"]` 提供原生页面 bundle。`engines.dsh` 声明兼容范围 `>=0.2.0 <0.3.0`，但实际验收只在 DSH `0.2.2-rc.1`（macOS arm64）完成；该声明不是已逐版本验证的范围。包清单的 `icon` 指向 `assets/plugin-icon.png`（小于 256 KiB），完整图标资源仍随包分发。
 
 ### 从发行包安装（使用者无需 Go）
 
-`dist/dsh-intelligence-check-<platform>-<arch>.tgz` 已内置对应平台的 Go 后台，安装时不需要 Go、pnpm 或现场编译：
+从 [最新发行版](https://github.com/Lanjunyee/dsh-intelligence-check/releases/latest) 下载 `dsh-intelligence-check.tgz` 通用包，或选择 `dsh-intelligence-check-<platform>-<arch>.tgz` 分平台包。通用包内置五个平台的 Go 后台并自动选择当前平台；分平台包只含对应后台。安装时不需要 Go、pnpm 或现场编译：
 
 ```sh
 # 先启动一次 DSH 桌面应用并完全退出，初始化其固定 profile
-dsh plugin --profile desktop add /absolute/path/to/dsh-intelligence-check-darwin-arm64.tgz
+dsh plugin --profile desktop add /absolute/path/to/dsh-intelligence-check.tgz
 ```
 
 DSH 桌面应用固定使用 `$DSH_HOME/profiles/desktop`（默认 `~/.dsh/profiles/desktop`），因此必须安装到 `desktop` profile；安装到其他 profile 不会出现在桌面应用侧边栏。请使用桌面应用“管理 dsh 命令”安装的 `dsh` 命令执行上述安装；独立 npm CLI 可能拒绝管理保留的 `desktop` profile。
@@ -51,7 +55,7 @@ DSH 桌面应用固定使用 `$DSH_HOME/profiles/desktop`（默认 `~/.dsh/profi
 | Linux ARM64 | `dsh-intelligence-check-linux-arm64.tgz` |
 | Windows x86-64 | `dsh-intelligence-check-windows-amd64.tgz` |
 
-每个包只含本平台 `bin/quality-check`（Windows 为 `.exe`）。插件按宿主平台优先选择包内 `bin/quality-check-<platform>-<arch>`，发行包内回退到 `bin/quality-check`；也可用 `binaryPath` 覆盖。
+通用包包含五个 `bin/quality-check-<platform>-<arch>` 后台（Windows 为 `.exe`）；每个分平台包只含本平台 `bin/quality-check`（Windows 为 `.exe`）。插件按宿主平台优先选择带平台后缀的后台，分平台包内回退到 `bin/quality-check`；也可用 `binaryPath` 覆盖。
 
 共享数据位于 `$DSH_HOME/dsh-intelligence-check/`（未设置 `DSH_HOME` 时为 `~/.dsh/dsh-intelligence-check/`），由同一用户的全部工作目录与 profile 共同使用。新版从空数据开始，不读取、迁移或合并旧 profile 数据；旧数据不会被删除，也无需为迁移备份。单独启动 `dsh` CLI（包括 `dsh web`）只加载页面，不启动或接管检测后台；桌面应用的共享后台正在运行时，该页面连接并显示同一状态，否则显示后台不可用。
 
@@ -82,13 +86,13 @@ node scripts/build-release.mjs
 node scripts/package-check.mjs
 ```
 
-产物在 `dist/`：五个平台的 `quality-check-<platform>-<arch>` 后台、官方 bundle tarball、`manifest.json` 与 `SHA256SUMS`。校验：
+产物在 `dist/`：五个平台的 `quality-check-<platform>-<arch>` 后台、五个分平台 bundle tarball、通用包 `dsh-intelligence-check.tgz`、`manifest.json` 与 `SHA256SUMS`。校验：
 
 ```sh
 cd dist && shasum -a 256 -c SHA256SUMS
 ```
 
-`manifest.json` 记录每个产物的平台、大小与 SHA-256。发行包通过 GitHub Releases 分发，不发布 npm、不上架插件市场；当前只在 macOS arm64 上执行真实平台安装，其余平台产物由交叉编译生成并通过布局与校验检查。
+`manifest.json` 记录每个产物的平台、大小与 SHA-256。发行包通过 GitHub Releases 分发，并准备提交插件市场收录，不发布 npm；当前只在 macOS arm64 上执行真实平台安装，其余平台产物由交叉编译生成并通过布局与校验检查。
 
 ## 首次配置
 
@@ -251,6 +255,7 @@ node scripts/build-client.mjs
 node scripts/build-release.mjs
 node scripts/package-check.mjs
 node scripts/install-check.mjs
+node scripts/install-check.mjs --universal
 ```
 
 可选的集成检查（使用隔离 `DSH_HOME`；`DSH_PLUGIN_PACKAGE` 指定要安装的 tarball 或检出目录，`DSH_INTELLIGENCE_CHECK_TEST_BINARY` 指定当前源码构建的后台）：
@@ -275,9 +280,9 @@ node scripts/auth-browser-check.mjs
 其中：
 
 - `build-client.mjs` 把原生页面源码与 ModelTrace 评分核心组装为 DSH 模块加载器要求的 `plugin/client.js`；
-- `build-release.mjs` 交叉编译五个平台后台，用 `npm pack` 生成每平台只含本平台后台的官方 bundle tarball，并写入 `manifest.json` 与 `SHA256SUMS`；
-- `package-check.mjs` 检查包标识、`dsh.bundle`/`dsh.client` 声明、`./client` 导出、图标大小、每平台布局、可执行位、checksum 与无 Go 源码；
-- `install-check.mjs` 解压当前平台发行包并验证插件与客户端 bundle 可加载、后台可启动和清理；
+- `build-release.mjs` 交叉编译五个平台后台，用 `npm pack` 生成五个分平台包与一个包含全部后台的通用包，并写入 `manifest.json` 与 `SHA256SUMS`；
+- `package-check.mjs` 检查包标识、`dsh.bundle`/`dsh.client` 声明、`./client` 导出、截图、图标大小、分平台与通用包布局、可执行位、checksum 与无 Go 源码；
+- `install-check.mjs` 解压当前平台发行包并验证插件与客户端 bundle 可加载、后台可启动和清理；加 `--universal` 检查通用包；
 - `dsh-profile-check.mjs` 使用隔离 `DSH_HOME` 和真实 DSH profile 验证原生侧边栏页面、用户级共享状态、单后台、桌面模型目录权威、跨 profile 会话、CLI/Web 仅连接不启动、HTML/SVG 预览、人工评审、ModelTrace、桌面退出/接管清理与 HMR 重载；浏览器可用时通过 Playwright 点击侧边栏并操作主区域页面；
 - `dsh-lifecycle-check.mjs` 使用真实宿主桥接验证完整/缺用量/错误/截断/取消/独立复测/同名目标隔离/取消后重跑与重启持久化；
 - `dsh-auto-check.mjs` 使用隔离 `DSH_HOME` 和本地受控模型服务，以短间隔验证自动检测默认关闭、仅监测目标 milk、无业务对话触发、关闭/移除停止、并发合并、预算与清理、重启配置及退出取消；浏览器可用时通过原生页面开启自动检测并设置间隔，关闭页面后继续观察定时调用；

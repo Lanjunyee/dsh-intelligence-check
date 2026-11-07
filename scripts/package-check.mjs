@@ -66,5 +66,44 @@ for(const {goos,goarch} of platforms){
  const modes=spawnSync('tar',['-tvzf',file,packedBin],{encoding:'utf8'});
  assert.match(modes.stdout,/^-rwx/,`${archive} 内后台二进制不可执行`);
 }
-assert.equal(manifest.artifacts.length,platforms.length*2);
-console.log(`PASS: ${platforms.length} 平台官方 bundle、包布局、图标、可执行位、checksum 与 Go 免安装分发检查`);
+const universal='dsh-intelligence-check.tgz';
+const universalFile=path.join(root,'dist',universal);
+const universalItem=byName.get(universal);
+assert.ok(universalItem,'manifest 缺少通用安装包');
+assert.deepEqual(universalItem.platforms,platforms);
+const universalBytes=await fs.readFile(universalFile);
+assert.equal(universalBytes.length,universalItem.size);
+assert.equal(createHash('sha256').update(universalBytes).digest('hex'),universalItem.sha256);
+assert.equal(sumMap.get(universal),universalItem.sha256);
+const listing=spawnSync('tar',['-tzf',universalFile],{encoding:'utf8'});
+assert.equal(listing.status,0);
+const files=new Set(listing.stdout.split('\n').filter(Boolean));
+const expectedBins=platforms.map(({goos,goarch})=>`package/bin/quality-check-${goos}-${goarch}${goos==='windows'?'.exe':''}`);
+assert.deepEqual([...files].filter(name=>name.startsWith('package/bin/')&&!name.endsWith('/')).sort(),expectedBins.sort(),'通用包必须只含五个平台后台');
+for(const packedBin of expectedBins){
+ const unpacked=spawnSync('tar',['-xOzf',universalFile,packedBin],{maxBuffer:64*1024*1024});
+ assert.equal(unpacked.status,0);
+ assert.equal(createHash('sha256').update(unpacked.stdout).digest('hex'),byName.get(path.basename(packedBin)).sha256,packedBin);
+ const modes=spawnSync('tar',['-tvzf',universalFile,packedBin],{encoding:'utf8'});
+ assert.equal(modes.status,0);
+ assert.match(modes.stdout,/^-rwx/,`${packedBin} 不可执行`);
+}
+assert.ok(![...files].some(name=>name.endsWith('.go')||name.endsWith('go.mod')||name.endsWith('go.sum')),'通用包不应包含 Go 源码');
+for(const archive of [...platforms.map(({goos,goarch})=>`dsh-intelligence-check-${goos}-${goarch}.tgz`),universal]){
+ const file=path.join(root,'dist',archive);
+ const meta=spawnSync('tar',['-xOzf',file,'package/package.json'],{encoding:'utf8'});
+ assert.equal(meta.status,0);
+ assert.equal(JSON.parse(meta.stdout).version,pkg.version);
+ const screenshots=spawnSync('tar',['-xOzf',file,'package/screenshots.json'],{encoding:'utf8'});
+ assert.equal(screenshots.status,0);
+ const paths=JSON.parse(screenshots.stdout);
+ assert.ok(Array.isArray(paths)&&paths.length>=1&&paths.length<=8,'发行包需要 1–8 张市场截图');
+ for(const image of paths){
+  assert.ok(!path.isAbsolute(image)&&!image.split('/').includes('..'),'截图必须位于插件目录内');
+  const screenshot=spawnSync('tar',['-xOzf',file,`package/${image}`],{maxBuffer:16*1024*1024});
+  assert.equal(screenshot.status,0,`${archive} 缺少截图 ${image}`);
+  assert.ok(screenshot.stdout.length>0);
+ }
+}
+assert.equal(manifest.artifacts.length,platforms.length*2+1);
+console.log(`PASS: ${platforms.length} 平台及通用 bundle、包布局、截图、图标、可执行位、checksum 与 Go 免安装分发检查`);
