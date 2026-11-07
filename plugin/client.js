@@ -946,10 +946,11 @@ function CheckPage() {
             h('div', {className: 'dic-candidates'}, ...candidateRows),
             h('details', {className: 'dic-details'},
               h('summary', null, `全部 ${traceReport.results.length} 个候选`),
-              h('table', {className: 'dic-table'},
-                h('thead', null, h('tr', null,
-                  h('th', null, '候选模型'), h('th', null, '家族'), h('th', {className: 'dic-align-right'}, '闭集概率'))),
-                h('tbody', null, ...rankingRows)))));
+              h('div', {className: 'dic-table-wrap'},
+                h('table', {className: 'dic-table'},
+                  h('thead', null, h('tr', null,
+                    h('th', null, '候选模型'), h('th', null, '家族'), h('th', {className: 'dic-align-right'}, '闭集概率'))),
+                  h('tbody', null, ...rankingRows))))));
     } else if (traceReportError) {
       // An attribution exception is its own outcome: show it even though no
       // report could be produced, rather than falling back to a silent empty
@@ -1173,6 +1174,7 @@ const CSS = `
 .dic-tab[aria-selected=true]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--dic-accent); }
 .dic-tab-count { font-family: var(--ds-font-family-code); font-size: 11px; color: var(--dsw-alias-label-secondary); }
 .dic-section { display: grid; gap: 18px; }
+.dic-section > *, .dic-trace > * { min-width: 0; }
 .dic-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
 .dic-hint { color: var(--dic-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .dic-error { color: var(--dic-error); }
@@ -1320,7 +1322,7 @@ const CSS = `
   .dic-candidate { grid-template-columns: minmax(0, 1fr) 64px; }
   .dic-candidate .dic-bar { grid-column: 1; grid-row: 2; }
   .dic-candidate .dic-mono:last-child { grid-column: 2; grid-row: 1 / 3; text-align: right; }
-  .dic-table { min-width: 640px; }
+  .dic-table-wrap .dic-table { min-width: 640px; }
   .dic-history-controls .dic-field { max-width: none; }
 }
 @container (max-width: 420px) {

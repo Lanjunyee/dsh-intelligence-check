@@ -42,6 +42,23 @@
       "offset": "3px",
       "appliesTo": "输入框、选择器、按钮、标签页、开关、题目行、摘要行与代码块。"
     },
+    "typographyVariants": [
+      {
+        "name": "code-answer",
+        "refersTo": "typography.code-answer",
+        "appliesTo": "HTML、SVG 与世界海陆地图题目的原始回答；宿主等宽字体、13px、1.95 行高。",
+        "distinctFrom": "typography.code 保持 12px、1.8 行高，用于原始提示词、预览代码与计数等普通代码内容。"
+      }
+    ],
+    "tables": [
+      {
+        "name": "scrollable-table",
+        "minWidth": "640px",
+        "breakpoint": "container ≤740px",
+        "appliesTo": "具有局部横向滚动容器的表格：模型监测目标表与模型归因全部候选表。",
+        "purpose": "需要横向空间的表格在自身容器内滚动，不撑宽检测页面。"
+      }
+    ],
     "elevation": [
       {
         "name": "overlay",

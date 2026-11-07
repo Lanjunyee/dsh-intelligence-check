@@ -47,6 +47,7 @@
     "test:dsh-auto": "node scripts/dsh-auto-check.mjs",
     "test:dsh-settings": "node scripts/dsh-settings-check.mjs",
     "test:native-attribution": "node scripts/native-attribution-check.mjs",
+    "test:native-work-page": "node scripts/native-work-page-check.mjs",
     "test:dsh-recovery": "node scripts/dsh-recovery-check.mjs",
     "build:release": "node scripts/build-release.mjs",
     "test:install": "node scripts/install-check.mjs"
