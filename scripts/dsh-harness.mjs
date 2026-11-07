@@ -8,10 +8,9 @@ import os from 'node:os';
 import path from 'node:path';
 import {hostTarget} from '../plugin/platform.mjs';
 
-// Shared real-DSH harness for the profile, lifecycle and automatic checks.
-// Each caller still owns its patch content and assertions; the isolated home,
-// install/boot/stop, page API session exchange and the controlled
-// OpenAI-compatible model server boundary are shared here.
+// 供 profile、生命周期与自动检测等检查共用的真实 DSH 宿主工具。
+// 各调用方仍各自负责补丁内容与断言；隔离 home、安装/启动/停止、页面 API
+// 会话交换以及受控 OpenAI 兼容模型服务边界在此共享。
 export const root = path.resolve(import.meta.dirname, '..');
 export const dsh = process.env.DSH_BINARY || (existsSync('/usr/local/bin/dsh') ? '/usr/local/bin/dsh' : 'dsh');
 export const packageSpec = process.env.DSH_PLUGIN_PACKAGE || root;
