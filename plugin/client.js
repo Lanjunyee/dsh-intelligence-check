@@ -423,7 +423,7 @@ function download(name, text, type = 'text/plain;charset=utf-8') {
 function Button(props) {
   return h('button', {
     type: props.type || 'button',
-    className: `dic-btn${props.primary ? ' dic-btn-primary' : ''}${props.icon ? ' dic-btn-icon' : ''}${props.className ? ` ${props.className}` : ''}`,
+    className: `dic-btn${props.primary ? ' dic-btn-primary' : ''}${props.icon && !props.children ? ' dic-btn-icon' : ''}${props.className ? ` ${props.className}` : ''}`,
     disabled: props.disabled || props.busy,
     'aria-busy': props.busy ? 'true' : undefined,
     'aria-label': props.label,
@@ -592,7 +592,7 @@ function CheckPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState({text: '', ok: true});
-  const [tab, setTab] = useState('models');
+  const [tab, setTab] = useState('tests');
   const [busy, setBusy] = useState('');
   const [selected, setSelected] = useState('');
   const [prompt, setPrompt] = useState('milk');
@@ -738,7 +738,8 @@ function CheckPage() {
     const ids = new Set(state.results.map(item => item.id));
     setPending({provider: target.provider, model: target.model, prompt: effectivePrompt, ids});
     setRecordId('');
-    act('run', '/action', {provider: target.provider, model: target.model, action: 'test', prompt: effectivePrompt}, '已开始检测');
+    act('run', '/action', {provider: target.provider, model: target.model, action: 'test', prompt: effectivePrompt}, '已开始检测')
+      .then(result => { if (!result.ok) setPending(null); });
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -765,7 +766,14 @@ function CheckPage() {
   }
 
   function renderModels() {
-    return h('section', {className: 'dic-section', role: 'tabpanel', 'aria-labelledby': 'dic-tab-models'},
+    return h('section', {id: 'dic-view-models', className: 'dic-section', role: 'tabpanel', 'aria-labelledby': 'dic-tab-models'},
+      h('div', {className: 'dic-summary', 'aria-label': '检测概览'},
+        h('span', null, `自动监测 ${targets.filter(item => item.enabled).length} / ${targets.length} 个目标`),
+        h('span', null, `自动检测：${autoLabel}`),
+        h('span', null, `今日请求：${state ? core.dayCount(state) : 0}`),
+        h('span', null, todayUsage.reported
+          ? `已报告用量：${todayUsage.total} tokens${todayUsage.missing ? `（${todayUsage.missing} 条缺失）` : ''}`
+          : '尚无已报告用量')),
       h('div', {className: 'dic-section-head'},
         h('h2', null, '检测目标'),
         h('span', {className: 'dic-hint'}, '模型目录来自 DSH 桌面应用；检测不拦截业务请求')),
@@ -776,7 +784,7 @@ function CheckPage() {
       }},
       h(Field, {label: '提供方'},
         h('select', {className: 'dic-select', value: addProvider, required: true, onChange: event => setAddProvider(event.target.value)},
-          ...catalog.map(item => h('option', {value: item.provider, key: item.provider},
+          ...Array.from(new Map(catalog.map(item => [item.provider, item])).values()).map(item => h('option', {value: item.provider, key: item.provider},
             item.provider_name && item.provider_name !== item.provider ? `${item.provider_name} (${item.provider})` : item.provider)))),
       h(Field, {label: '模型'},
         h('select', {className: 'dic-select', value: addModel, required: true, onChange: event => setAddModel(event.target.value)},
@@ -786,9 +794,9 @@ function CheckPage() {
       h('div', {className: 'dic-table-wrap'},
         h('table', {className: 'dic-table'},
           h('thead', null, h('tr', null,
-            h('th', null, '提供方'), h('th', null, '模型'), h('th', null, '今日预算'), h('th', {className: 'dic-align-right'}, '操作'))),
+            h('th', null, '提供方'), h('th', null, '模型'), h('th', null, '今日请求 / 上限'), h('th', null, '自动监测'), h('th', {className: 'dic-align-right'}, '操作'))),
           h('tbody', null, ...(targets.length === 0
-            ? [h('tr', {key: 'empty'}, h('td', {colSpan: 4, className: 'dic-empty'}, '从 DSH 模型目录添加一个检测目标开始测试'))]
+            ? [h('tr', {key: 'empty'}, h('td', {colSpan: 5, className: 'dic-empty'}, '从 DSH 模型目录添加一个检测目标开始测试'))]
             : targets.map(item => {
               const label = core.modelLabel(item.provider, item.model);
               const itemRunning = state.results.some(entry => entry.provider === item.provider && entry.model === item.model && entry.verdict === 'running');
@@ -796,13 +804,15 @@ function CheckPage() {
                 h('td', {className: 'dic-mono'}, item.provider),
                 h('td', {className: 'dic-mono'}, item.model),
                 h('td', {className: 'dic-mono'}, `${core.dayCount(state, item.provider, item.model)} / ${state.config.daily_limit}`),
-                h('td', null, h('div', {className: 'dic-row-actions'},
-                  h(Button, {icon: 'refresh', label: `重新检测 ${label}`, title: '重新检测', disabled: itemRunning || Boolean(busy),
-                    onClick: () => act('retest', '/action', {provider: item.provider, model: item.model, action: 'test'}, `${label}：已开始检测`)}),
+                h('td', null, h('div', {className: 'dic-monitor-state'},
                   h('label', {className: 'dic-toggle', title: `监测 ${label}`},
                     h('input', {type: 'checkbox', checked: item.enabled, 'aria-label': `监测 ${label}`, disabled: Boolean(busy),
                       onChange: event => act('toggle', '/target', {provider: item.provider, model: item.model, enabled: event.target.checked})}),
                     h('span', {className: 'dic-toggle-track'})),
+                  h('span', {className: 'dic-hint'}, item.enabled ? '已开启' : '已关闭'))),
+                h('td', null, h('div', {className: 'dic-row-actions'},
+                  h(Button, {icon: 'refresh', label: `重新检测 ${label}`, title: '重新检测', disabled: itemRunning || Boolean(busy),
+                    onClick: () => act('retest', '/action', {provider: item.provider, model: item.model, action: 'test'}, `${label}：已开始检测`)}),
                   h(Button, {icon: 'trash', label: `删除 ${label}`, title: '删除检测目标', disabled: itemRunning || Boolean(busy),
                     onClick: () => {
                       if (!window.confirm(`删除 ${label}？历史记录和预算计数保留。`)) return;
@@ -818,71 +828,95 @@ function CheckPage() {
     const status = running ? `检测进行中，已等待 ${elapsed} 秒（最长 180 秒）。`
       : record ? (incomplete ? '检测未完成' : '检测完成')
         : (target && modelResults.some(item => item.verdict === 'running') ? '该模型正在运行其他检测。' : '');
-    return h('section', {className: 'dic-section', role: 'tabpanel', 'aria-labelledby': 'dic-tab-tests'},
-      h('div', {className: 'dic-section-head'}, h('h2', null, '质量题库'), h('span', {className: 'dic-hint'}, `${prompts.length} 道题目`)),
-      h('div', {className: 'dic-test-controls'},
-        h(Field, {label: '测试模型'},
-          h('select', {className: 'dic-select', value: effectiveSelected, onChange: event => { setSelected(event.target.value); setRecordId(''); }},
-            ...targets.map(item => h('option', {value: core.identity(item.provider, item.model), key: core.identity(item.provider, item.model)},
-              core.modelLabel(item.provider, item.model) + (item.enabled ? '' : '（监测关闭）'))))),
-        h(Field, {label: '测试题'},
-          h('select', {className: 'dic-select', value: effectivePrompt, onChange: event => { setPrompt(event.target.value); setRecordId(''); }},
-            ...prompts.map(item => h('option', {value: item.id, key: item.id}, item.name)))),
-        h(Button, {primary: true, icon: 'play', busy: busy === 'run', disabled: !target || running, label: '运行所选题目', onClick: startTest}, '运行所选题目'),
-        modelResults.some(item => item.verdict === 'running' && item.prompt !== 'modeltrace')
-          ? h(Button, {icon: 'x', label: '取消当前质量检测', title: '取消当前质量检测', busy: busy === 'cancel',
-            onClick: () => act('cancel', '/action', {provider: target.provider, model: target.model, action: 'cancel-test'})})
-          : null),
-      h('p', {className: `dic-hint${incomplete ? ' dic-error' : ''}`, role: 'status'}, status),
-      h('div', {className: 'dic-answer-head'},
-        h('h2', null, '模型回答'),
-        h('div', {className: 'dic-answer-tools'},
-          h('select', {className: 'dic-select', 'aria-label': '回答记录', value: record?.id || '', disabled: !promptRecords.length || Boolean(waiting),
-            onChange: event => setRecordId(event.target.value)},
-            h('option', {value: ''}, '最新回答'),
-            ...promptRecords.map(item => h('option', {value: item.id, key: item.id}, `${core.dateTime(item.time)} / ${core.names[item.verdict] || item.verdict}`))),
-          h(Button, {icon: 'copy', label: '复制回答', disabled: !answer, onClick: () => navigator.clipboard.writeText(answer)
-            .then(() => setFeedback({text: '回答已复制', ok: true}))
-            .catch(failure => setFeedback({text: failure.message, ok: false}))}),
-          h(Button, {icon: 'download', label: '下载回答', disabled: !answer,
-            onClick: () => download(`result-${record.id}.txt`, answer)}))),
-      h('p', {className: 'dic-hint'}, record
-        ? `${core.modelLabel(record.provider, record.model)} / ${core.dateTime(record.time)} / ${core.names[record.verdict] || record.verdict} / ${core.usageLabel(record)}`
-        : target ? `${core.modelLabel(target.provider, target.model)} / ${promptInfo?.name || ''}` : '尚未添加检测目标'),
-      record?.error ? h('p', {className: 'dic-error', role: 'alert'}, record.error) : null,
-      h('pre', {className: 'dic-pre', tabIndex: 0},
-        answer || (running ? '正在等待模型回答…' : record ? (record.verdict === 'empty' ? '本次回答为空。' : record.error ? '本次请求未返回回答正文。' : '本次回答为空。') : '当前模型和题目暂无回答')),
-      h(SvgPreview, {record: running ? undefined : record}),
-      h(HtmlPreview, {record: running ? undefined : record}),
-      answer && !running ? h('div', {className: 'dic-analysis'},
-        h('h3', null, '自动辅助检查'),
-        ...core.analyzeAnswer(record, promptInfo).map(([label, value], index) => h('div', {className: 'dic-analysis-row', key: index},
-          h('span', {className: 'dic-hint'}, label), h('span', null, value)))) : null,
-      answer && !running && record ? h('form', {className: 'dic-review', onSubmit: event => {
-        event.preventDefault();
-        act('review', `/results/${encodeURIComponent(record.id)}/review`, {decision: review.decision, note: review.note}, '评审已保存');
-      }},
-      h('div', {className: 'dic-section-head'},
-        h('h2', null, '人工评审'),
-        h('span', {className: 'dic-hint'}, record.review
-          ? `${core.reviewNames[record.review]} / ${core.dateTime(record.reviewed_at)}` : '未评审')),
-      h('div', {className: 'dic-review-fields'},
-        h(Field, {label: '评审结论'},
-          h('select', {className: 'dic-select', value: review.decision,
-            onChange: event => setReview({...review, decision: event.target.value, dirty: true})},
-            ...Object.entries(core.reviewNames).map(([value, label]) => h('option', {value, key: value}, label)))),
-        h(Field, {label: '评审备注'},
-          h('textarea', {className: 'dic-input', rows: 3, maxLength: 1000, placeholder: '记录判断依据或待复核的问题',
-            value: review.note, onChange: event => setReview({...review, note: event.target.value, dirty: true})}))),
-      h('div', {className: 'dic-modal-actions'},
-        h('span', {className: 'dic-hint'}, '评审仅记录评价，不影响模型调用。'),
-        h(Button, {primary: true, type: 'submit', icon: 'check', busy: busy === 'review', label: '保存评审'}, '保存评审'))) : null,
-      h('details', {className: 'dic-details'},
-        h('summary', null, '提示词原文'),
-        h('pre', {className: 'dic-pre'}, promptInfo?.text || '')),
-      h('aside', {className: 'dic-guidance'},
-        h('h3', null, '结果参考与限制'),
-        h('p', null, data?.guidance?.[effectivePrompt] || '')));
+    return h('section', {id: 'dic-view-tests', className: 'dic-workspace', role: 'tabpanel', 'aria-labelledby': 'dic-tab-tests'},
+      h('aside', {className: 'dic-setup', 'aria-label': '测试配置'},
+        h('div', {className: 'dic-section-head'}, h('h2', null, '质量题库'), h('span', {className: 'dic-hint'}, `${prompts.length} 道题目`)),
+        h('div', {className: 'dic-test-controls'},
+          h(Field, {label: '测试模型'},
+            h('select', {className: 'dic-select', value: effectiveSelected, disabled: !targets.length,
+              onChange: event => { setSelected(event.target.value); setRecordId(''); }},
+              !targets.length ? h('option', {value: ''}, '请先添加检测目标') : null,
+              ...targets.map(item => h('option', {value: core.identity(item.provider, item.model), key: core.identity(item.provider, item.model)},
+                core.modelLabel(item.provider, item.model))))),
+          h('p', {className: 'dic-hint'}, '手动测试无需开启自动监测。'),
+          h(Button, {className: 'dic-text-button', icon: 'plus', label: '管理检测目标', onClick: () => setTab('models')}, '管理检测目标'),
+          h('fieldset', {className: 'dic-question-list'},
+            h('legend', null, '选择测试题'),
+            ...prompts.map(item => h('label', {className: `dic-question${effectivePrompt === item.id ? ' dic-question-selected' : ''}`, key: item.id},
+              h('input', {type: 'radio', name: 'dic-question', value: item.id, checked: effectivePrompt === item.id,
+                onChange: () => { setPrompt(item.id); setRecordId(''); }}),
+              h('span', null, item.name), h('small', null, item.id === 'milk' ? '自动评估' : '人工评审')))),
+          h('div', {className: 'dic-question-select'},
+            h(Field, {label: '测试题'},
+              h('select', {className: 'dic-select', value: effectivePrompt,
+                onChange: event => { setPrompt(event.target.value); setRecordId(''); }},
+                ...prompts.map(item => h('option', {value: item.id, key: item.id}, item.name))))),
+          h('div', {className: 'dic-run-actions'},
+            h(Button, {primary: true, icon: 'play', busy: busy === 'run', disabled: !target || targetRunning || Boolean(pending) || Boolean(busy),
+              label: '运行所选题目', onClick: startTest}, running ? '正在检测…' : '运行所选题目'),
+            modelResults.some(item => item.verdict === 'running' && item.prompt !== 'modeltrace')
+              ? h(Button, {icon: 'x', label: '取消当前质量检测', busy: busy === 'cancel',
+                onClick: () => act('cancel', '/action', {provider: target.provider, model: target.model, action: 'cancel-test'})}, '取消检测')
+              : null)),
+        h('details', {className: 'dic-details dic-prompt-details'},
+          h('summary', null, '提示词原文'),
+          h('pre', {className: 'dic-pre'}, promptInfo?.text || '')),
+        h('details', {className: 'dic-details dic-guidance'},
+          h('summary', null, '结果参考与限制'),
+          h('p', null, data?.guidance?.[effectivePrompt] || ''))),
+      h('div', {className: 'dic-reading'},
+        h('div', {className: 'dic-answer-head'},
+          h('div', {className: 'dic-answer-title'},
+            h('h2', null, '模型回答'),
+            record ? h(StateBadge, {verdict: record.verdict}) : null),
+          h('div', {className: 'dic-answer-tools'},
+            h('select', {className: 'dic-select', 'aria-label': '回答记录', value: record?.id || '', disabled: !promptRecords.length || Boolean(waiting),
+              onChange: event => setRecordId(event.target.value)},
+              h('option', {value: ''}, '最新回答'),
+              ...promptRecords.map(item => h('option', {value: item.id, key: item.id}, `${core.dateTime(item.time)} / ${core.names[item.verdict] || item.verdict}`))),
+            h(Button, {icon: 'copy', label: '复制回答', disabled: !answer, onClick: () => navigator.clipboard.writeText(answer)
+              .then(() => setFeedback({text: '回答已复制', ok: true}))
+              .catch(failure => setFeedback({text: failure.message, ok: false}))}),
+            h(Button, {icon: 'download', label: '下载回答', disabled: !answer,
+              onClick: () => download(`result-${record.id}.txt`, answer)}))),
+        h('p', {className: 'dic-answer-meta dic-hint'}, record
+          ? `${promptInfo?.name || ''} · ${core.modelLabel(record.provider, record.model)} · ${core.dateTime(record.time)} · ${core.usageLabel(record)}`
+          : target ? `${promptInfo?.name || ''} · ${core.modelLabel(target.provider, target.model)}` : '选择模型和题目，回答将在这里显示'),
+        status ? h('p', {className: `dic-run-status dic-hint${incomplete ? ' dic-error' : ''}`, role: 'status'}, status) : null,
+        record?.error ? h('p', {className: 'dic-error dic-banner', role: 'alert'}, record.error) : null,
+        answer || running || record
+          ? h('pre', {className: `dic-pre dic-answer-body${['html', 'svg', 'map'].includes(effectivePrompt) ? ' dic-answer-code' : ''}`, tabIndex: 0},
+            answer || (running ? '正在等待模型回答…' : record.error ? '本次请求未返回回答正文。' : '本次回答为空。'))
+          : h('div', {className: 'dic-answer-empty'},
+            h(Icon, {name: 'flask', size: 28}),
+            h('h3', null, target ? '准备好，开始一次测试' : '先添加一个检测目标'),
+            h('p', null, target ? '选择一道题，点击“运行所选题目”。\n模型的原始回答会保留在这里，便于回看和评审。' : '从 DSH 模型目录添加模型后，即可运行题库中的测试。'),
+            !target ? h(Button, {primary: true, icon: 'plus', label: '添加检测目标', onClick: () => setTab('models')}, '添加检测目标') : null),
+        h(SvgPreview, {record: running ? undefined : record}),
+        h(HtmlPreview, {record: running ? undefined : record}),
+        answer && !running ? h('details', {className: 'dic-details dic-analysis'},
+          h('summary', null, '自动辅助检查'),
+          ...core.analyzeAnswer(record, promptInfo).map(([label, value], index) => h('div', {className: 'dic-analysis-row', key: index},
+            h('span', {className: 'dic-hint'}, label), h('span', null, value)))) : null,
+        answer && !running && record ? h('form', {className: 'dic-review', onSubmit: event => {
+          event.preventDefault();
+          act('review', `/results/${encodeURIComponent(record.id)}/review`, {decision: review.decision, note: review.note}, '评审已保存');
+        }},
+        h('div', {className: 'dic-section-head'},
+          h('h2', null, '人工评审'),
+          h('span', {className: 'dic-hint'}, record.review
+            ? `${core.reviewNames[record.review]} / ${core.dateTime(record.reviewed_at)}` : '未评审')),
+        h('div', {className: 'dic-review-fields'},
+          h(Field, {label: '评审结论'},
+            h('select', {className: 'dic-select', value: review.decision,
+              onChange: event => setReview({...review, decision: event.target.value, dirty: true})},
+              ...Object.entries(core.reviewNames).map(([value, label]) => h('option', {value, key: value}, label)))),
+          h(Field, {label: '评审备注'},
+            h('textarea', {className: 'dic-input', rows: 3, maxLength: 1000, placeholder: '记录判断依据或待复核的问题',
+              value: review.note, onChange: event => setReview({...review, note: event.target.value, dirty: true})}))),
+        h('div', {className: 'dic-modal-actions'},
+          h('span', {className: 'dic-hint'}, '评审仅记录评价，不影响模型调用。'),
+          h(Button, {primary: true, type: 'submit', icon: 'check', busy: busy === 'review', label: '保存评审'}, '保存评审'))) : null));
   }
 
   function renderFingerprint() {
@@ -922,7 +956,7 @@ function CheckPage() {
       // result.
       traceContent = h('p', {className: 'dic-error', role: 'alert'}, `本轮无法归因：${traceReportError}`);
     }
-    return h('section', {className: 'dic-section', role: 'tabpanel', 'aria-labelledby': 'dic-tab-fingerprint'},
+    return h('section', {id: 'dic-view-fingerprint', className: 'dic-section', role: 'tabpanel', 'aria-labelledby': 'dic-tab-fingerprint'},
       h('div', {className: 'dic-section-head'}, h('h2', null, 'ModelTrace'), h('span', {className: 'dic-hint'}, '18 个候选 / GPT + Claude')),
       h('div', {className: 'dic-test-controls'},
         h(Field, {label: '检测模型'},
@@ -967,7 +1001,7 @@ function CheckPage() {
   }
 
   function renderHistory() {
-    return h('section', {className: 'dic-section', role: 'tabpanel', 'aria-labelledby': 'dic-tab-history'},
+    return h('section', {id: 'dic-view-history', className: 'dic-section', role: 'tabpanel', 'aria-labelledby': 'dic-tab-history'},
       h('div', {className: 'dic-section-head'}, h('h2', null, '检测记录'), h('span', {className: 'dic-hint'}, `${filtered.length} 条记录`)),
       h('div', {className: 'dic-history-controls'},
         ...[
@@ -1026,8 +1060,8 @@ function CheckPage() {
   }
 
   const tabs = [
-    ['models', '模型监测', 'monitor', targets.length],
     ['tests', '质量题库', 'flask', null],
+    ['models', '模型监测', 'monitor', targets.length],
     ['fingerprint', '模型指纹', 'fingerprint', null],
     ['history', '检测记录', 'history', null],
   ];
@@ -1043,12 +1077,6 @@ function CheckPage() {
         h(Button, {icon: 'settings', label: '检测预算设置', title: '检测设置', onClick: openSettings}))),
     error ? h('p', {className: 'dic-error dic-banner', role: 'alert'}, error) : null,
     feedback.text ? h('p', {className: `dic-feedback${feedback.ok ? ' dic-ok' : ' dic-error'}`, role: 'status'}, feedback.text) : null,
-    h('section', {className: 'dic-overview', 'aria-label': '检测概览'},
-      h('div', {className: 'dic-stat'}, h('span', null, '监测目标'), h('strong', null, targets.filter(item => item.enabled).length)),
-      h('div', {className: 'dic-stat'}, h('span', null, '自动检测'), h('strong', null, autoLabel)),
-      h('div', {className: 'dic-stat'}, h('span', null, '今日请求'), h('strong', null, state ? core.dayCount(state) : 0)),
-      h('div', {className: 'dic-stat'}, h('span', null, '今日已报告 tokens'),
-        h('strong', null, todayUsage.reported ? `${todayUsage.total}${todayUsage.missing ? ` / ${todayUsage.missing} 条缺失` : ''}` : '不可用'))),
     h('nav', {className: 'dic-tabs', role: 'tablist', 'aria-label': '检测页面视图'},
       ...tabs.map(([id, label, icon, count], index) => h('button', {
         type: 'button', role: 'tab', id: `dic-tab-${id}`, 'aria-selected': String(tab === id),
@@ -1112,43 +1140,58 @@ function apply(ctx) {
 const inject = ['slots'];
 
 const CSS = `
-.dic-page { box-sizing: border-box; height: 100%; overflow: auto; padding: 28px clamp(20px, 4vw, 48px) 56px; color: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); }
+.dic-page {
+  --dic-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f);
+  --dic-paper: var(--dsw-alias-bg-base);
+  --dic-ground: color-mix(in srgb, var(--dic-accent) 5%, var(--dic-paper));
+  --dic-selected: color-mix(in srgb, var(--dic-accent) 11%, var(--dic-paper));
+  --dic-border: color-mix(in srgb, var(--dic-accent) 16%, var(--dic-paper));
+  --dic-muted: color-mix(in srgb, var(--dsw-alias-label-primary) 66%, var(--dic-ground));
+  --dic-success: color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, var(--dsw-alias-label-primary));
+  --dic-error: color-mix(in srgb, var(--dsw-alias-state-error-primary) 55%, var(--dsw-alias-label-primary));
+  --dic-warning: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, var(--dsw-alias-label-primary));
+  box-sizing: border-box; height: 100%; overflow: auto; padding: 28px 32px 40px;
+  color: var(--dsw-alias-label-primary); background: var(--dic-paper); font-family: var(--dsw-font-family); font-size: 14px;
+  container-type: inline-size; scrollbar-color: var(--dic-border) transparent; caret-color: var(--dic-accent);
+}
 .dic-page * { box-sizing: border-box; letter-spacing: 0; }
+.dic-page ::selection { color: var(--dsw-alias-label-primary); background: var(--dic-selected); }
 .dic-page h1, .dic-page h2, .dic-page h3, .dic-page p { margin: 0; }
-.dic-page h1 { font-size: 24px; font-weight: 500; line-height: 1.2; }
-.dic-page h2 { font-size: 16px; font-weight: 500; }
-.dic-page h3 { font-size: 14px; font-weight: 500; }
-.dic-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+.dic-page h1 { font-size: 22px; font-weight: 600; line-height: 1.35; }
+.dic-page h2 { font-size: 17px; font-weight: 600; line-height: 1.5; }
+.dic-page h3 { font-size: 14px; font-weight: 600; line-height: 1.5; }
+.dic-head { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 14px; }
 .dic-title { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .dic-head-actions { display: flex; gap: 8px; }
 .dic-status { display: inline-flex; align-items: center; gap: 7px; color: var(--dsw-alias-label-secondary); font-size: 12px; white-space: nowrap; }
 .dic-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dsw-alias-state-success-primary); }
 .dic-status-error .dic-dot { background: var(--dsw-alias-state-error-primary); }
-.dic-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 20px; margin-bottom: 28px; }
-.dic-stat { display: grid; gap: 8px; padding: 16px; border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); border: 0.5px solid var(--dsw-alias-border-l2); }
-.dic-stat span { color: var(--dsw-alias-label-secondary); font-size: 12px; }
-.dic-stat strong { font-family: var(--ds-font-family-code); font-size: 22px; font-weight: 400; line-height: 1.2; }
-.dic-tabs { display: flex; gap: 24px; border-bottom: 0.5px solid var(--dsw-alias-border-l2); margin-bottom: 28px; overflow-x: auto; }
+.dic-summary { display: flex; flex-wrap: wrap; gap: 12px 24px; padding: 14px 18px; border-radius: 8px; background: var(--dic-ground); color: var(--dic-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.dic-tabs { display: flex; gap: 28px; border-bottom: 1px solid var(--dic-border); margin-bottom: 24px; overflow-x: auto; }
 .dic-tab { display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 10px 0 13px; border: 0; border-radius: 0; background: none; color: var(--dsw-alias-label-secondary); font: inherit; cursor: pointer; white-space: nowrap; position: relative; }
-.dic-tab[aria-selected=true] { color: var(--dsw-alias-label-primary); }
-.dic-tab[aria-selected=true]::after { content: ""; position: absolute; left: 0; right: 0; bottom: -0.5px; height: 2px; background: var(--dsw-alias-label-primary); }
+.dic-tab[aria-selected=true] { color: var(--dic-accent); font-weight: 600; }
+.dic-tab[aria-selected=true]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--dic-accent); }
 .dic-tab-count { font-family: var(--ds-font-family-code); font-size: 11px; color: var(--dsw-alias-label-secondary); }
 .dic-section { display: grid; gap: 18px; }
 .dic-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; }
-.dic-hint { color: var(--dsw-alias-label-secondary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
-.dic-error { color: var(--dsw-alias-state-error-primary); }
-.dic-ok { color: var(--dsw-alias-state-success-primary); }
+.dic-hint { color: var(--dic-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.dic-error { color: var(--dic-error); }
+.dic-ok { color: var(--dic-success); }
 .dic-banner, .dic-feedback { padding: 10px 0; line-height: 1.7; }
 .dic-banner { margin-bottom: 16px; }
 .dic-add { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; }
 .dic-add .dic-field { flex: 1; min-width: 160px; }
-.dic-field { display: grid; gap: 6px; color: var(--dsw-alias-label-secondary); font-size: 12px; }
-.dic-input, .dic-select { min-height: 36px; width: 100%; min-width: 0; padding: 7px 10px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-xs); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font: inherit; }
-.dic-input:focus-visible, .dic-select:focus-visible, .dic-btn:focus-visible, .dic-tab:focus-visible, .dic-toggle input:focus-visible + .dic-toggle-track { outline: 2px solid var(--dsw-alias-state-business-primary, var(--dsw-alias-brand-primary)); outline-offset: 2px; }
-.dic-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 7px 12px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-xs); background: transparent; color: var(--dsw-alias-label-primary); font: inherit; cursor: pointer; flex-shrink: 0; }
+.dic-field { display: grid; gap: 8px; color: var(--dic-muted); font-size: 13px; min-width: 0; }
+.dic-input, .dic-select { min-height: 40px; width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--dic-border); border-radius: 6px; background: var(--dic-paper); color: var(--dsw-alias-label-primary); font: inherit; }
+.dic-input { resize: vertical; }
+.dic-input::placeholder { color: var(--dic-muted); }
+.dic-input:focus-visible, .dic-select:focus-visible, .dic-btn:focus-visible, .dic-tab:focus-visible, .dic-toggle input:focus-visible + .dic-toggle-track, .dic-question:has(input:focus-visible), .dic-page summary:focus-visible, .dic-pre:focus-visible { outline: 2px solid var(--dic-accent); outline-offset: 3px; }
+.dic-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 9px 14px; border: 1px solid var(--dic-border); border-radius: 6px; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; line-height: 1.4; cursor: pointer; flex-shrink: 0; white-space: nowrap; }
+.dic-btn svg { flex-shrink: 0; }
 .dic-btn:disabled { opacity: .45; cursor: default; }
-.dic-btn-icon { width: 36px; padding: 0; }
-.dic-btn-primary { background: var(--dsw-alias-button-primary-fill, var(--dsw-alias-label-primary)); border-color: transparent; color: var(--dsw-alias-label-primary-inverted, var(--dsw-alias-bg-base)); }
+.dic-btn-icon { width: 40px; padding: 0; }
+.dic-btn-primary { background: var(--dic-accent); border-color: var(--dic-accent); color: var(--dic-paper); }
+.dic-text-button { justify-content: flex-start; padding: 4px 0; border: 0; color: var(--dic-accent); min-height: 32px; font-size: 12px; }
 .dic-table-wrap { width: 100%; overflow-x: auto; }
 .dic-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .dic-table th { padding: 10px 12px 10px 0; color: var(--dsw-alias-label-secondary); font-size: 12px; font-weight: 400; text-align: left; border-bottom: 0.5px solid var(--dsw-alias-border-l2); }
@@ -1164,20 +1207,47 @@ const CSS = `
 .dic-toggle-track::before { content: ""; display: block; width: 10px; height: 10px; margin: 3px; border-radius: 50%; background: var(--dsw-alias-label-secondary); }
 .dic-toggle input:checked + .dic-toggle-track { background: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-label-primary); }
 .dic-toggle input:checked + .dic-toggle-track::before { background: var(--dsw-alias-bg-base); margin-left: 15px; }
-.dic-test-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 12px; align-items: end; }
-.dic-test-controls .dic-btn { min-width: 148px; }
-.dic-answer-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+.dic-monitor-state { display: flex; align-items: center; gap: 5px; }
+.dic-workspace { display: grid; grid-template-columns: 264px minmax(0, 1fr); border: 1px solid var(--dic-border); border-radius: 12px; align-items: stretch; min-height: 640px; }
+.dic-setup { padding: 22px 20px; min-width: 0; background: var(--dic-ground); border-right: 1px solid var(--dic-border); border-radius: 12px 0 0 12px; }
+.dic-setup > .dic-section-head { margin-bottom: 24px; }
+.dic-test-controls { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.dic-setup .dic-test-controls { display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
+.dic-question-list { border: 0; padding: 0; margin: 18px 0 4px; min-width: 0; }
+.dic-question-list legend { padding: 0; margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.dic-question { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 46px; margin: 3px -8px; padding: 10px; border-radius: 6px; cursor: pointer; transition: background-color 160ms ease-out, color 160ms ease-out; }
+.dic-question input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }
+.dic-question span { font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.dic-question small { color: var(--dic-muted); font-size: 11px; white-space: nowrap; }
+.dic-question-selected { background: var(--dic-selected); color: var(--dic-accent); }
+.dic-question-selected span { font-weight: 600; }
+.dic-question-select { display: none; }
+.dic-run-actions { display: grid; gap: 8px; margin: 12px 0 16px; }
+.dic-setup .dic-details { margin-top: 4px; }
+.dic-setup .dic-details summary { font-size: 12px; color: var(--dic-muted); }
+.dic-setup .dic-pre { font-size: 12px; max-height: 340px; padding: 12px; }
+.dic-reading { display: grid; align-content: start; gap: 16px; min-width: 0; padding: 26px 28px; }
+.dic-answer-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.dic-answer-title { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.dic-answer-meta { padding-bottom: 18px; border-bottom: 1px solid var(--dic-border); }
+.dic-answer-empty { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 16px; min-height: 350px; text-align: center; color: var(--dic-muted); padding: 32px 16px; }
+.dic-answer-empty > svg { color: var(--dic-accent); }
+.dic-answer-empty h3 { color: var(--dsw-alias-label-primary); font-size: 17px; }
+.dic-answer-empty p { max-width: 42ch; font-size: 13px; line-height: 1.9; white-space: pre-line; }
+.dic-run-status { font-variant-numeric: tabular-nums; }
 .dic-answer-tools { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
 .dic-answer-tools .dic-select { width: auto; max-width: 260px; }
 .dic-pre { margin: 0; min-height: 120px; max-height: 480px; overflow: auto; padding: 16px; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-primary); font-family: var(--ds-font-family-code); font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
-.dic-analysis, .dic-review { display: grid; gap: 12px; padding-top: 18px; border-top: 0.5px solid var(--dsw-alias-border-l2); }
+.dic-answer-body { min-height: 280px; max-height: 560px; padding: 12px 0 24px; border: 0; border-radius: 0; background: transparent; font-family: var(--dsw-font-family); font-size: 15px; line-height: 1.95; tab-size: 2; }
+.dic-answer-code { font-family: var(--ds-font-family-code); font-size: 13px; }
+.dic-review { display: grid; gap: 16px; padding-top: 24px; border-top: 1px solid var(--dic-border); }
+.dic-analysis { padding: 0; }
+.dic-analysis-row { margin-bottom: 10px; }
 .dic-analysis-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px; font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; }
 .dic-review-fields { display: grid; grid-template-columns: minmax(140px, 180px) minmax(0, 1fr); gap: 16px; }
 .dic-details { border-top: 0.5px solid var(--dsw-alias-border-l2); }
 .dic-details summary { min-height: 44px; padding: 13px 0; cursor: pointer; color: var(--dsw-alias-label-primary); }
-.dic-guidance { display: grid; gap: 10px; padding: 16px; border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-1); }
-.dic-guidance h3 { color: var(--dsw-alias-label-secondary); font-size: 12px; }
-.dic-guidance p { color: var(--dsw-alias-label-secondary); font-size: 13px; line-height: 1.8; }
+.dic-guidance p { color: var(--dic-muted); font-size: 12px; line-height: 1.85; padding-bottom: 14px; overflow-wrap: anywhere; }
 .dic-preview { display: grid; gap: 10px; padding-top: 18px; border-top: 0.5px solid var(--dsw-alias-border-l2); }
 .dic-preview img { display: block; width: 100%; height: 360px; object-fit: contain; border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-1); }
 .dic-preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -1199,9 +1269,9 @@ const CSS = `
 .dic-trace-items { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
 .dic-trace-item { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; font-size: 12px; }
 .dic-state { display: inline-flex; font-size: 12px; color: var(--dsw-alias-label-secondary); }
-.dic-state-passed { color: var(--dsw-alias-state-success-primary); }
-.dic-state-failed, .dic-state-unavailable { color: var(--dsw-alias-state-error-primary); }
-.dic-state-running, .dic-state-truncated, .dic-state-empty { color: var(--dsw-alias-state-warn-primary); }
+.dic-state-passed { color: var(--dic-success); }
+.dic-state-failed, .dic-state-unavailable { color: var(--dic-error); }
+.dic-state-running, .dic-state-truncated, .dic-state-empty { color: var(--dic-warning); }
 .dic-trace-report { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
 .dic-trace-prediction { display: grid; gap: 8px; }
 .dic-prediction { font-size: 22px; line-height: 1.3; overflow-wrap: anywhere; }
@@ -1228,26 +1298,48 @@ const CSS = `
 .dic-check-row input { width: 18px; height: 18px; margin: 0; }
 @media (hover: hover) {
   .dic-btn:not(:disabled):hover { background: var(--dsw-alias-interactive-bg-hover); }
-  .dic-btn-primary:not(:disabled):hover { background: var(--dsw-alias-button-primary-hover, var(--dsw-alias-label-primary)); }
-  .dic-tab:hover { color: var(--dsw-alias-label-primary); }
+  .dic-btn-primary:not(:disabled):hover { background: color-mix(in srgb, var(--dic-accent) 88%, var(--dic-paper)); }
+  .dic-text-button:not(:disabled):hover { background: transparent; text-decoration: underline; text-underline-offset: 4px; }
+  .dic-question:not(.dic-question-selected):hover { background: var(--dic-selected); }
+  .dic-tab:hover { color: var(--dic-accent); }
 }
-@media (max-width: 820px) {
-  .dic-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .dic-test-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+@container (max-width: 740px) {
+  .dic-workspace { grid-template-columns: minmax(0, 1fr); }
+  .dic-setup { border-right: 0; border-bottom: 1px solid var(--dic-border); border-radius: 12px 12px 0 0; }
+  .dic-question-list { display: none; }
+  .dic-question-select { display: block; }
+  .dic-setup .dic-test-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 12px; }
+  .dic-setup .dic-test-controls > .dic-hint { grid-row: 2; }
+  .dic-setup .dic-text-button { grid-column: 2; grid-row: 2; justify-content: flex-end; }
+  .dic-setup .dic-question-select { grid-column: 2; grid-row: 1; }
+  .dic-run-actions { grid-column: 1 / -1; display: flex; margin: 0; }
+  .dic-setup .dic-details { margin-top: 12px; }
+  .dic-test-controls { grid-template-columns: minmax(0, 1fr); }
   .dic-review-fields, .dic-trace-report, .dic-compare { grid-template-columns: minmax(0, 1fr); }
   .dic-record summary { grid-template-columns: minmax(0, 1fr) 90px; }
   .dic-candidate { grid-template-columns: minmax(0, 1fr) 64px; }
   .dic-candidate .dic-bar { grid-column: 1; grid-row: 2; }
   .dic-candidate .dic-mono:last-child { grid-column: 2; grid-row: 1 / 3; text-align: right; }
-}
-@media (max-width: 520px) {
-  .dic-page { padding: 20px 16px 48px; }
-  .dic-overview { gap: 12px; }
-  .dic-test-controls { grid-template-columns: minmax(0, 1fr); }
+  .dic-table { min-width: 640px; }
   .dic-history-controls .dic-field { max-width: none; }
+}
+@container (max-width: 420px) {
+  .dic-title { flex-wrap: wrap; gap: 6px 12px; }
+  .dic-tabs { gap: 20px; }
+  .dic-setup { padding: 18px 16px; }
+  .dic-reading { padding: 22px 16px; }
+  .dic-setup .dic-test-controls { grid-template-columns: minmax(0, 1fr); }
+  .dic-setup .dic-question-select, .dic-setup .dic-test-controls > .dic-hint, .dic-setup .dic-text-button { grid-column: 1; grid-row: auto; }
+  .dic-setup .dic-text-button { justify-content: flex-start; }
+  .dic-answer-tools { width: 100%; }
+  .dic-answer-tools .dic-select { flex: 1; width: 0; }
+  .dic-answer-empty { min-height: 260px; }
+  .dic-modal-actions { flex-wrap: wrap; }
   .dic-analysis-row { grid-template-columns: 80px minmax(0, 1fr); }
 }
-@media (prefers-reduced-motion: reduce) { .dic-btn { transition: none; } }
+@media (max-width: 820px) { .dic-page { padding: 22px 20px 36px; } }
+@media (max-width: 520px) { .dic-page { padding: 20px 14px 32px; } }
+@media (prefers-reduced-motion: reduce) { .dic-question { transition: none; } }
 `;
 
 module.exports = { apply, inject };

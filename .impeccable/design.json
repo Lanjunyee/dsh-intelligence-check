@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-07T00:00:00.000Z",
+  "title": "Design System: 模型质量检测",
+  "extensions": {
+    "motion": [
+      {
+        "name": "state-transition",
+        "value": "160ms ease-out",
+        "purpose": "题目行选中与悬停的背景、文字过渡。"
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition: none",
+        "purpose": "prefers-reduced-motion 下取消题目行过渡。"
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "workspace-stack",
+        "value": "740px",
+        "purpose": "容器查询：工作区改为上下排列，题目列表折叠为选择器。"
+      },
+      {
+        "name": "workspace-compact",
+        "value": "420px",
+        "purpose": "容器查询：进一步单列并收紧读取区与配置区内边距。"
+      },
+      {
+        "name": "page-pad-md",
+        "value": "820px",
+        "purpose": "视口查询：页面内边距降为 22px 20px 36px。"
+      },
+      {
+        "name": "page-pad-sm",
+        "value": "520px",
+        "purpose": "视口查询：页面内边距降为 20px 14px 32px。"
+      }
+    ],
+    "focus": {
+      "ring": "2px solid var(--dic-accent)",
+      "offset": "3px",
+      "appliesTo": "输入框、选择器、按钮、标签页、开关、题目行、摘要行与代码块。"
+    },
+    "elevation": [
+      {
+        "name": "overlay",
+        "value": "var(--dsw-elevation-prominent)",
+        "purpose": "仅用于模态框与展开预览。"
+      },
+      {
+        "name": "mask",
+        "value": "var(--dsw-alias-bg-mask-2)",
+        "purpose": "模态背景遮罩。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "唯一主操作的深绿实心按钮。",
+      "html": "<button class='ds-btn-primary' type='button'>运行检测</button>",
+      "css": ".ds-btn-primary { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-paper: var(--dsw-alias-bg-base); display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 9px 14px; border: 1px solid var(--ds-accent); border-radius: 6px; background: var(--ds-accent); color: var(--ds-paper); font: inherit; font-size: 14px; line-height: 1.4; cursor: pointer; white-space: nowrap; flex-shrink: 0; } .ds-btn-primary:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; } .ds-btn-primary:disabled { opacity: .45; cursor: default; } @media (hover: hover) { .ds-btn-primary:not(:disabled):hover { background: color-mix(in srgb, var(--ds-accent) 88%, var(--ds-paper)); } }"
+    },
+    {
+      "name": "Icon Button",
+      "kind": "button",
+      "refersTo": "button-icon",
+      "description": "40px 方形次级操作按钮，用于复制与下载。",
+      "html": "<button class='ds-btn-icon' type='button' aria-label='复制'><svg width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.2' aria-hidden='true'><rect x='5.5' y='5.5' width='8' height='8' rx='1.5'/><path d='M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2'/></svg></button>",
+      "css": ".ds-btn-icon { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-border: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f) 16%, var(--dsw-alias-bg-base)); display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--ds-border); border-radius: 6px; background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer; flex-shrink: 0; } .ds-btn-icon svg { flex-shrink: 0; } .ds-btn-icon:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; } .ds-btn-icon:disabled { opacity: .45; cursor: default; } @media (hover: hover) { .ds-btn-icon:not(:disabled):hover { background: var(--dsw-alias-interactive-bg-hover); } }"
+    },
+    {
+      "name": "Select Field",
+      "kind": "input",
+      "refersTo": "select",
+      "description": "40px 高的模型与记录选择器，带 13px 字段标签。",
+      "html": "<label class='ds-field'>模型<select class='ds-select'><option>DSH 默认模型</option><option>备用模型</option></select></label>",
+      "css": ".ds-field { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-paper: var(--dsw-alias-bg-base); --ds-ground: color-mix(in srgb, var(--ds-accent) 5%, var(--ds-paper)); --ds-border: color-mix(in srgb, var(--ds-accent) 16%, var(--ds-paper)); --ds-muted: color-mix(in srgb, var(--dsw-alias-label-primary) 66%, var(--ds-ground)); display: grid; gap: 8px; min-width: 0; color: var(--ds-muted); font-size: 13px; } .ds-select { min-height: 40px; width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--ds-border); border-radius: 6px; background: var(--ds-paper); color: var(--dsw-alias-label-primary); font: inherit; } .ds-select:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; }"
+    },
+    {
+      "name": "Tabs",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "四个工作页标签，44px 高，选中态为强调色文字与 2px 底线。",
+      "html": "<div class='ds-tabs' role='tablist'><button class='ds-tab' role='tab' aria-selected='true'>质量题库<span class='ds-tab-count'>7</span></button><button class='ds-tab' role='tab' aria-selected='false'>模型监测<span class='ds-tab-count'>2</span></button></div>",
+      "css": ".ds-tabs { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-paper: var(--dsw-alias-bg-base); --ds-border: color-mix(in srgb, var(--ds-accent) 16%, var(--ds-paper)); display: flex; gap: 28px; border-bottom: 1px solid var(--ds-border); overflow-x: auto; } .ds-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 10px 0 13px; border: 0; border-radius: 0; background: none; color: var(--dsw-alias-label-secondary); font: inherit; cursor: pointer; white-space: nowrap; } .ds-tab[aria-selected='true'] { color: var(--ds-accent); font-weight: 600; } .ds-tab[aria-selected='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--ds-accent); } .ds-tab-count { font-family: var(--ds-font-family-code); font-size: 11px; color: var(--dsw-alias-label-secondary); } .ds-tab:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; } @media (hover: hover) { .ds-tab:hover { color: var(--ds-accent); } }"
+    },
+    {
+      "name": "Question Row",
+      "kind": "custom",
+      "refersTo": "question-row",
+      "description": "整行可点击的单选题目，选中后浅绿底与深绿文字，并同步右侧回答标题。",
+      "html": "<label class='ds-question'><input type='radio' name='ds-question' checked><span>表达是否准确、完整？</span><small>基础</small></label>",
+      "css": ".ds-question { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-paper: var(--dsw-alias-bg-base); --ds-ground: color-mix(in srgb, var(--ds-accent) 5%, var(--ds-paper)); --ds-selected: color-mix(in srgb, var(--ds-accent) 11%, var(--ds-paper)); --ds-muted: color-mix(in srgb, var(--dsw-alias-label-primary) 66%, var(--ds-ground)); position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 46px; margin: 3px -8px; padding: 10px; border-radius: 6px; cursor: pointer; transition: background-color 160ms ease-out, color 160ms ease-out; } .ds-question input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; } .ds-question span { font-size: 13px; min-width: 0; overflow-wrap: anywhere; } .ds-question small { color: var(--ds-muted); font-size: 11px; white-space: nowrap; } .ds-question:has(input:checked) { background: var(--ds-selected); color: var(--ds-accent); } .ds-question:has(input:checked) span { font-weight: 600; } .ds-question:has(input:focus-visible) { outline: 2px solid var(--ds-accent); outline-offset: 3px; } @media (hover: hover) { .ds-question:not(:has(input:checked)):hover { background: var(--ds-selected); } } @media (prefers-reduced-motion: reduce) { .ds-question { transition: none; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "检测答卷",
+    "overview": "界面像一张正在填写的答卷：左侧是待选题目与模型，右侧是留白充足的回答阅读区；操作与选择用深绿标记，配置区以极浅的绿色灰度退后。整体服务于“选模型、选题目、运行、读回答”这条主线，不用装饰性图形分散注意力。\n\n视觉密度中等偏低，层级依靠底色、边框和字重，而不是卡片堆叠或阴影。所有颜色、字体、圆角与浮层均取自 DSH 宿主语义变量或由 color-mix 派生，因此明暗主题随宿主自然切换。",
+    "keyCharacteristics": [
+      "浅绿灰配置区、白色阅读区、深绿操作与选中态。",
+      "宿主无衬线字体承载正文，等宽字体只用于代码与计数。",
+      "标准控件尺寸（40px 控件、44px 标签页/摘要行），精确、克制。",
+      "平面为主，分层靠色调与细边框；浮层才使用宿主抬升。"
+    ],
+    "rules": [
+      {
+        "name": "宿主同源规则",
+        "body": "不新增独立配色；除强调色中既有的 #18835f 绿色种子外，不写死十六进制。新增色必须由宿主语义变量经 color-mix 派生。",
+        "section": "colors"
+      },
+      {
+        "name": "宿主字体规则",
+        "body": "不引入 Web Font，不覆盖宿主字体栈；标题与正文的差异只通过字号和字重表达。",
+        "section": "typography"
+      },
+      {
+        "name": "平面分层规则",
+        "body": "静态内容区不加阴影；需要区分层级时优先用 ground、selected 与边界绿灰，而不是投影。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 使用宿主语义变量与 color-mix 派生色；明暗主题不单独维护。",
+      "Do 保持 40px 控件、44px 标签页/摘要行、46px 题目行的高度节奏。",
+      "Do 用浅绿灰配置区、白色阅读区、深绿操作与选中态组织“先配置、后阅读”的层级。",
+      "Do 让键盘焦点始终可见：2px 强调色轮廓、外扩 3px。",
+      "Do 用 160ms ease-out 表达选中与悬停，并尊重 reduced-motion。"
+    ],
+    "donts": [
+      "Don't 写死十六进制色值（强调色既有的 #18835f 种子除外）或引入新的字体。",
+      "Don't 为静态区块添加阴影；浮层抬升只用于模态框与展开预览。",
+      "Don't 混用多套圆角；控件 6px、概览 8px、工作区 12px 之外不再扩展。",
+      "Don't 用装饰图形、图像或图标集替代信息层级；图标只作操作提示。",
+      "Don't 改变主操作与次级操作的色彩分工：深绿实心只给唯一主操作。"
+    ]
+  }
+}

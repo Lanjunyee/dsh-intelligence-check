@@ -126,6 +126,26 @@ test('every tab renders with shared state', async () => {
   }
 });
 
+test('the default workspace shows questions and keeps text buttons at their natural width', async () => {
+  const {page} = await pageWith([state]);
+  const tree = page({});
+  assert.ok(containsText(tree, '质量题库'));
+  assert.ok(containsText(tree, '手动测试无需开启自动监测。'));
+  const nodes = [tree];
+  const buttons = [];
+  while (nodes.length) {
+    const node = nodes.pop();
+    if (!node || typeof node !== 'object') continue;
+    if (typeof node.type === 'function' && node.type.name === 'Button') buttons.push(node);
+    nodes.push(...(node.children || []).flat());
+  }
+  const run = buttons.find(node => node.props.label === '运行所选题目');
+  const copy = buttons.find(node => node.props.label === '复制回答');
+  assert.ok(run && copy);
+  assert.doesNotMatch(run.type({...run.props, children: run.children[0]}).props.className, /dic-btn-icon/);
+  assert.match(copy.type(copy.props).props.className, /dic-btn-icon/);
+});
+
 test('pure helpers keep their observable contracts', () => {
   assert.equal(core.identity('a', 'b'), 'a\u0000b');
   assert.equal(core.usageLabel({usage: {input_tokens: 10, output_tokens: 5, cache_read_tokens: 2}}), '17 tokens');
