@@ -146,6 +146,38 @@ test('the default workspace shows questions and keeps text buttons at their natu
   assert.match(copy.type(copy.props).props.className, /dic-btn-icon/);
 });
 
+test('cancelled quality checks present as cancelled without changing the stored verdict', () => {
+  const aborted = {
+    id: 'cancelled', provider: 'p', model: 'm', prompt: 'person', verdict: 'unavailable',
+    error: '检测已取消', finish: 'aborted', time: '2026-01-03T00:00:00Z',
+  };
+  const failed = {
+    id: 'failed', provider: 'p', model: 'm', prompt: 'person', verdict: 'unavailable',
+    error: '调用失败', time: '2026-01-03T00:01:00Z',
+  };
+  assert.equal(core.isCancelled(aborted), true);
+  assert.equal(core.isCancelled(failed), false);
+  assert.equal(core.displayVerdict(aborted), 'cancelled');
+  assert.equal(core.displayVerdict(failed), 'unavailable');
+  assert.equal(aborted.verdict, 'unavailable', '原始存储 verdict 被改写');
+  const state = {results: [aborted, failed], cleared_usage: {}};
+  assert.deepEqual(core.filterResults(state, {verdict: 'cancelled'}).map(item => item.id), ['cancelled']);
+  assert.deepEqual(core.filterResults(state, {verdict: 'unavailable'}).map(item => item.id), ['failed']);
+});
+
+test('same-second ModelTrace challenges are told apart by their batch position', () => {
+  const batch = 'batch-1';
+  const results = [
+    {id: 'a', prompt: 'modeltrace', batch, verdict: 'manual', time: '2026-01-01T00:00:00Z'},
+    {id: 'b', prompt: 'modeltrace', batch, verdict: 'manual', time: '2026-01-01T00:00:00Z'},
+    {id: 'c', prompt: 'modeltrace', batch, verdict: 'manual', time: '2026-01-01T00:00:00Z'},
+    {id: 'other', prompt: 'milk', verdict: 'passed', time: '2026-01-01T00:00:00Z'},
+  ];
+  assert.deepEqual(results.slice(0, 3).map(item => core.traceChallenge(results, item)), [1, 2, 3]);
+  assert.equal(core.traceChallenge(results, results[3]), 0);
+  assert.equal(core.traceChallenge(results, {id: 'x', prompt: 'modeltrace', batch: 'missing'}), 0);
+});
+
 test('pure helpers keep their observable contracts', () => {
   assert.equal(core.identity('a', 'b'), 'a\u0000b');
   assert.equal(core.usageLabel({usage: {input_tokens: 10, output_tokens: 5, cache_read_tokens: 2}}), '17 tokens');

@@ -10,9 +10,22 @@ const names = {
 };
 const reviewNames = {pending: '待确认', accepted: '确认通过', rejected: '标记问题'};
 
-function dateTime(raw) {
+// 用户取消的质量检测以 verdict "unavailable" 并附带取消标记的形式存储。
+// 呈现层将其读取为已取消，但不改写存储记录或导出数据。
+function isCancelled(record) {
+  return record?.finish === 'aborted' || record?.error === '检测已取消';
+}
+
+function displayVerdict(record) {
+  return isCancelled(record) ? 'cancelled' : record?.verdict;
+}
+
+function dateTime(raw, seconds = false) {
   return Date.parse(raw) > 0
-    ? new Date(raw).toLocaleString('zh-CN', {month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false})
+    ? new Date(raw).toLocaleString('zh-CN', {
+      month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+      ...(seconds ? {second: '2-digit'} : {}), hour12: false,
+    })
     : '未通过';
 }
 
@@ -58,6 +71,15 @@ function traceRunning(results) {
   return results.some(result => result.prompt === 'modeltrace' && result.verdict === 'running');
 }
 
+// ModelTrace 按顺序追加三条挑战，因此批次内位置即为现有挑战编号。
+// 返回 0 表示记录不属于已知批次，无需挑战标签。
+function traceChallenge(results, record) {
+  if (record?.prompt !== 'modeltrace' || !record.batch) return 0;
+  return results
+    .filter(item => item.prompt === 'modeltrace' && item.batch === record.batch)
+    .findIndex(item => item.id === record.id) + 1;
+}
+
 function traceBatchState(results) {
   if (results.some(result => result.verdict === 'running')) return 'running';
   if (results.length === 3 && results.every(result => result.verdict === 'manual')) return 'complete';
@@ -69,7 +91,7 @@ function traceBatchState(results) {
 function filterResults(state, filters) {
   return [...state.results].reverse().filter(record =>
     (!filters.model || identity(record.provider, record.model) === filters.model)
-    && (!filters.verdict || record.verdict === filters.verdict)
+    && (!filters.verdict || displayVerdict(record) === filters.verdict)
     && (!filters.prompt || record.prompt === filters.prompt)
     && (!filters.review || (record.review || 'pending') === filters.review));
 }
@@ -129,6 +151,7 @@ function sanitizeSVG(answer) {
 }
 
 export const core = {
-  identity, modelLabel, names, reviewNames, dateTime, reportedTokens, usageLabel, usageTotals,
-  dayCount, traceRunning, traceBatchState, filterResults, analyzeAnswer, sanitizeSVG,
+  identity, modelLabel, names, reviewNames, isCancelled, displayVerdict,
+  dateTime, reportedTokens, usageLabel, usageTotals,
+  dayCount, traceRunning, traceBatchState, traceChallenge, filterResults, analyzeAnswer, sanitizeSVG,
 };

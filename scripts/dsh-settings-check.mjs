@@ -106,6 +106,9 @@ test('native settings retain draft and feedback, and keep input focus across pol
     await step('focus stays on a non-first input while the background poll refreshes state', async page => {
       await openSettings(page);
       await checkInitialFocus(page);
+      const explanation = await modal(page).innerText();
+      assert.doesNotMatch(explanation, /\bmilk\b/, '设置说明暴露了内部题目标识 milk');
+      assert.match(explanation, /牛奶推理/, '设置说明未使用题目名称');
       await modalNumbers(page).nth(0).fill('321');
       await modalNumbers(page).nth(0).focus();
       await wait(3200);

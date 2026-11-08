@@ -86,11 +86,42 @@ ${pluginConfigOverride()}`);
   browser = await launchChromium();
   const page = await openNativePage(browser, host.login(), {tab: /模型指纹/});
 
+  // 窄内容区下四个标签应同屏可读，关键入口不能藏在横向滚动之后。
+  await page.setViewportSize({width: narrowWidth, height: 900});
+  await page.waitForTimeout(150);
+  const narrowTabs = await assertTabsFit('390px 标签栏');
+  await page.setViewportSize({width: 1280, height: 900});
+  await page.waitForTimeout(150);
+
   async function measurePage() {
     return page.locator('.dic-page').evaluate(element => ({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
     }));
+  }
+
+  async function assertTabsFit(label) {
+    const measured = await page.locator('.dic-tabs').evaluate(nav => {
+      const box = nav.getBoundingClientRect();
+      return {
+        clientWidth: nav.clientWidth,
+        scrollWidth: nav.scrollWidth,
+        tabs: [...nav.querySelectorAll('.dic-tab')].map(tab => {
+          const tabBox = tab.getBoundingClientRect();
+          return {label: tab.textContent.trim(), right: tabBox.right, width: tabBox.width};
+        }),
+        right: box.right,
+      };
+    });
+    assert.equal(measured.tabs.length, 4, `${label}：标签数量不是 4`);
+    for (const tab of measured.tabs) {
+      assert.ok(tab.width > 0, `${label}：${tab.label} 不可见`);
+      assert.ok(tab.right <= measured.right + 1,
+        `${label}：${tab.label} 超出标签栏右边界（${tab.right.toFixed(1)} > ${measured.right.toFixed(1)}）`);
+    }
+    assert.ok(measured.scrollWidth <= measured.clientWidth + 1,
+      `${label}：标签栏需要横向滚动（clientWidth ${measured.clientWidth}px，scrollWidth ${measured.scrollWidth}px）`);
+    return measured;
   }
 
   async function measureCandidateTable() {
@@ -305,6 +336,14 @@ ${pluginConfigOverride()}`);
     await page.getByRole('button', {name: '运行所选题目'}).click();
     const answer = page.locator('.dic-answer-body.dic-answer-code', {hasText: marker});
     await answer.waitFor({timeout: 60000});
+    if (promptId === 'html') {
+      const started = page.locator('.dic-feedback', {hasText: '已开始检测'});
+      if (await started.count()) {
+        await started.waitFor({state: 'detached', timeout: 6000}).catch(() => {
+          throw new Error('运行成功后顶部“已开始检测”反馈没有自动消失');
+        });
+      }
+    }
     await assertNarrowPageFits(`390px ${promptId} 代码回答`);
     codeTypography[promptId] = await answer.evaluate(element => {
       const style = getComputedStyle(element);
@@ -333,9 +372,38 @@ ${pluginConfigOverride()}`);
   assert.ok(Math.abs(promptLineHeight - 21.6) <= 0.05,
     `普通代码内容计算行高不是约 21.6px（实际 ${promptLineHeight}px）`);
 
+  // 无检测目标时，配置区本身应提供可操作的主入口，而不是把添加入口留在下方阅读区。
+  await page.getByRole('tab', {name: /质量题库/}).click();
+  await page.locator('.dic-page').evaluate(element => element.scrollTop = 0);
+  const beforeDelete = await getState(client);
+  for (const target of beforeDelete.state.targets) {
+    const removed = await postJSON(client, '/api/target/delete', {provider: target.provider, model: target.model});
+    assert.equal(removed.status, 200, removed.text);
+  }
+  const addTarget = page.locator('.dic-setup').getByRole('button', {name: '添加检测目标'});
+  await addTarget.waitFor({timeout: 15000});
+  assert.ok(await addTarget.isEnabled(), '无检测目标时配置区添加入口不可用');
+  const addBox = await addTarget.boundingBox();
+  assert.ok(addBox && addBox.y >= 0 && addBox.y + addBox.height <= 900,
+    '390px 首屏看不到配置区添加检测目标入口');
+
+  // 模型监测的空状态不得被表格最小宽度裁切，添加目标入口在窄屏首屏可见。
+  await page.getByRole('tab', {name: /模型监测/}).click();
+  const monitorEmpty = page.locator('#dic-view-models .dic-target-empty, #dic-view-models .dic-empty');
+  await monitorEmpty.waitFor({timeout: 15000});
+  const emptyBox = await monitorEmpty.boundingBox();
+  assert.ok(emptyBox && emptyBox.x >= 0 && emptyBox.x + emptyBox.width <= narrowWidth + 1,
+    '390px 模型监测空状态提示被表格宽度裁切');
+  const monitorAddButton = page.locator('#dic-view-models .dic-add .dic-btn-primary');
+  await monitorAddButton.scrollIntoViewIfNeeded();
+  const monitorAddBox = await monitorAddButton.boundingBox();
+  assert.ok(monitorAddBox && monitorAddBox.y >= 0 && monitorAddBox.y + monitorAddBox.height <= 900,
+    '390px 首屏看不到模型监测的添加检测目标入口');
+
   console.log('native work page check passed');
   console.log(JSON.stringify({
     candidateCount: expected.results.length,
+    narrowTabs,
     narrow,
     wide,
     wideTable,

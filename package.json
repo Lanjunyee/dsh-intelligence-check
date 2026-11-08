@@ -6,7 +6,7 @@
     "type": "git",
     "url": "git+https://github.com/Lanjunyee/dsh-intelligence-check.git"
   },
-  "version": "0.3.2",
+  "version": "0.3.3",
   "type": "module",
   "main": "./plugin/index.mjs",
   "exports": {
@@ -48,6 +48,7 @@
     "test:dsh-auto": "node scripts/dsh-auto-check.mjs",
     "test:dsh-settings": "node scripts/dsh-settings-check.mjs",
     "test:native-attribution": "node scripts/native-attribution-check.mjs",
+    "test:native-history": "node scripts/native-history-check.mjs",
     "test:native-work-page": "node scripts/native-work-page-check.mjs",
     "test:dsh-recovery": "node scripts/dsh-recovery-check.mjs",
     "build:release": "node scripts/build-release.mjs",

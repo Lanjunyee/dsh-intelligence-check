@@ -24,7 +24,12 @@
       {
         "name": "workspace-compact",
         "value": "420px",
-        "purpose": "容器查询：进一步单列并收紧读取区与配置区内边距。"
+        "purpose": "容器查询：进一步单列并收紧读取区与配置区内边距；隐藏标签页装饰图标、间距收到 16px，保证四个标签同屏可读。"
+      },
+      {
+        "name": "control-stack",
+        "value": "560px",
+        "purpose": "容器查询：配置区模型与题目选择改为单列，避免长模型名在半宽选择器中不可读；监测页添加目标表单同样改为单列全宽。"
       },
       {
         "name": "page-pad-md",
@@ -40,7 +45,7 @@
     "focus": {
       "ring": "2px solid var(--dic-accent)",
       "offset": "3px",
-      "appliesTo": "输入框、选择器、按钮、标签页、开关、题目行、摘要行与代码块。"
+      "appliesTo": "输入框、选择器、按钮、标签页、开关、设置复选框、题目行、摘要行与代码块。"
     },
     "typographyVariants": [
       {
@@ -53,10 +58,10 @@
     "tables": [
       {
         "name": "scrollable-table",
-        "minWidth": "640px",
+        "minWidth": "640px（模型监测目标表 720px）",
         "breakpoint": "container ≤740px",
         "appliesTo": "具有局部横向滚动容器的表格：模型监测目标表与模型归因全部候选表。",
-        "purpose": "需要横向空间的表格在自身容器内滚动，不撑宽检测页面。"
+        "purpose": "需要横向空间的表格在自身容器内滚动，不撑宽检测页面；目标表为长模型名保留更多列宽。"
       }
     ],
     "elevation": [

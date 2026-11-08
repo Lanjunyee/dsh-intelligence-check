@@ -55,13 +55,23 @@ try {
 ${pluginConfigOverride()}`);
   const host = await bootProfile('attribution');
   const {client} = await openPageSession(host);
+
+  browser = await launchChromium();
+  const page = await openNativePage(browser, host.login(), {tab: /模型指纹/});
+
+  // 尚无检测目标：空状态应说明缺少的前置条件，而不是声称没有批次。
+  // 设计还要求在没有可选项时禁用模型选择器。
+  await page.locator('.dic-empty').filter({hasText: '尚未添加检测目标'}).waitFor({timeout: 15000});
+  const traceModelSelect = page.locator('#dic-view-fingerprint .dic-test-controls select').first();
+  assert.equal(await traceModelSelect.isDisabled(), true, '无检测目标时归因模型选择器未禁用');
+
   for (const model of [attributable, rejected]) {
     const result = await postJSON(client, '/api/target', {provider, model, enabled: true});
     assert.equal(result.status, 200, result.text);
   }
-
-  browser = await launchChromium();
-  const page = await openNativePage(browser, host.login(), {tab: /模型指纹/});
+  await page.locator('#dic-view-fingerprint .dic-test-controls select option', {hasText: attributable})
+    .waitFor({state: 'attached', timeout: 15000});
+  assert.equal(await traceModelSelect.isEnabled(), true, '有检测目标时归因模型选择器仍禁用');
 
   // No batch yet: the existing empty state stays in place.
   await page.locator('.dic-empty').filter({hasText: '暂无指纹检测记录'}).waitFor({timeout: 15000});
@@ -73,6 +83,12 @@ ${pluginConfigOverride()}`);
   await page.getByText('最相似候选', {exact: true}).waitFor({timeout: 30000});
   assert.match(await page.locator('.dic-page').textContent(), /闭集行为相似性排序/);
   assert.equal(await page.locator('#dic-tab-fingerprint').count(), 1);
+
+  // 选择“最新批次”后应保持该选择，而不是在最新批次已显示时回退到批次 id。
+  const batchSelect = page.locator('#dic-view-fingerprint .dic-test-controls select').nth(1);
+  await batchSelect.selectOption({label: '最新批次'});
+  await page.waitForTimeout(150);
+  assert.equal(await batchSelect.inputValue(), '', '选择“最新批次”后未保持选中');
 
   // A completed batch with unusable answers fails attribution. The error must
   // be visible even though there is no report for this model/batch.
