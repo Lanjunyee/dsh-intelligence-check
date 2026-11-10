@@ -1,17 +1,61 @@
 # dsh-intelligence-check
 
-项目仓库：[Lanjunyee/dsh-intelligence-check](https://github.com/Lanjunyee/dsh-intelligence-check)。
+> 给 DeepSeek Harness 里用的模型做定期体检：跑题库、记回答、能人工评审，还能猜它像哪个模型。
+>
+> Model quality testing for DeepSeek Harness Desktop — question bank, manual and scheduled checks, saved responses, human reviews, and model attribution.
 
-项目已迁移为 DeepSeek Harness 原生模型质量测试与报告插件，复用桌面应用的模型配置与凭据，保留 Go 后端与 SQLite，检测结果不阻断业务请求。入口已从斜杠命令与独立网页控制台迁入 DSH 全局侧边栏，并在主区域展示原生检测页面；同一用户、同一台机器的所有工作目录与 profile 共享检测状态和一套后台。设计见 [ADR 0002](docs/adr/0002-desktop-panel-and-shared-check-state.md)，实现规格见 [Issue #12](https://github.com/Lanjunyee/dsh-intelligence-check/issues/12)。
+已收录于 [awesome-dsh-plugin](https://awesome-dsh-plugin.com/zh/p/Lanjunyee/dsh-intelligence-check/)（model 分类） · MIT License · [最新发行版](https://github.com/Lanjunyee/dsh-intelligence-check/releases/latest)
 
-**当前状态：Issue #12 已实现，Issue #13 的四项修复已合入并从最终源码交付。原生侧边栏入口与主区域页面、用户级共享存储、单后台与桌面配置权威、桌面退出清理、CLI 不启动后台、题库/手动检测/自动检测/历史/人工评审/导出/HTML/SVG 预览/ModelTrace 均已接入；Issue #12 在真实 DSH `0.2.2-rc.1` Web 宿主和真实打包 Desktop 应用中完成验收，Issue #13 最终包另在真实打包 Desktop 中完成设置失败/重试/焦点、归因失败可见、基本页面与退出清理验收（见 [Issue #12 验收记录](docs/acceptance-issue-12.md) 与 [Issue #13 验收记录](docs/acceptance-issue-13.md)）。**
+## 这是什么
 
-当前实现是 DSH 原生 Cordis 插件，对指定的模型执行主动质量检测并保存报告；检测运行、失败或异常结果均不拦截业务请求，也不改写业务模型路由。
+你在 DSH 里换模型、换渠道、换系统提示词之后，怎么知道它变好还是变坏了？这个插件就是干这个的：**对指定的模型主动跑测试、保存结果，出了问题你能看到，而不是凭感觉。**
 
-项目由两部分组成：
+- **7 道内置测试题**：牛奶推理（自动评分）、逐字复述、日本首相、人物知识、HTML/SVG 动画、SVG 创作、世界海陆地图
+- **手动 + 定时检测**：想测就点一下，也能让它每隔一段时间自动跑（默认关闭，只自动跑牛奶推理）
+- **回答都有记录**：原始回答、token 用量、通过 / 未通过都能查，还能导出
+- **人工评审**：对回答标“待确认 / 确认通过 / 标记问题”，写备注
+- **模型归因（ModelTrace）**：跑三条指纹挑战，给出候选模型排名和家族概率，帮你判断它像 GPT 还是 Claude 家的哪个模型
 
-- **DSH 插件**：`plugin/index.mjs` 在 DSH 桌面宿主中启动唯一的共享 Go 后台，`plugin/client.js` 把“模型质量检测”注册到全局侧边栏并打开主区域原生页面；模型目录与检测调用经插件桥接到桌面宿主的 `ctx.llm.stream()`，复用桌面 provider 配置与凭据。单独启动 CLI 不启动检测后台。
-- **Go 后台**：`cmd/quality-check` 提供本机管理 API、SQLite 状态存储、模型检测、临时远程控制台和原有嵌入页面。共享后台由桌面宿主管理，页面通过宿主同源路由访问。
+检测不拦截业务请求，也不改模型路由。只做测试和报告。
+
+## 界面预览
+
+![质量题库](assets/screenshots/quality-bank.png)
+![检测记录](assets/screenshots/history.png)
+![模型归因](assets/screenshots/model-attribution.png)
+
+## 30 秒安装
+
+不需要 Go、pnpm，也不需要现场编译。只需要 **DSH 桌面应用**。
+
+```sh
+# 1. 下载最新版通用包（一个包包含 macOS / Linux / Windows 五个平台的后台）
+#    https://github.com/Lanjunyee/dsh-intelligence-check/releases/latest
+#    下载 dsh-intelligence-check.tgz
+
+# 2. 先启动一次 DSH 桌面应用，再完全退出（初始化 desktop profile，只需做一次）
+
+# 3. 用桌面应用“管理 dsh 命令”安装的 dsh 执行下面这行，把路径换成你刚下载的文件
+dsh plugin --profile desktop add /absolute/path/to/dsh-intelligence-check.tgz
+```
+
+装好后启动 **DSH 桌面应用**，在全局侧边栏点 **“模型质量检测”**，主区域就会打开检测页面。
+
+卸载：`dsh plugin --profile desktop remove dsh-intelligence-check`
+
+## 首次使用
+
+1. 点 **“添加检测目标”**，从桌面应用的模型目录里选一个模型
+2. 回到 **“质量题库”**，选模型和题目，点 **“运行”**
+3. 在 **“检测记录”** 里看回答和结果，不满意的可以人工评审；想定时测，就在“模型监测”里打开该目标的自动监测
+
+## 先看这三点，再决定装不装
+
+- **必须用桌面应用**：检测后台只由 DSH 桌面应用启动。用 CLI 或 `dsh web` 打开时，只能查看桌面应用已在运行的后台；桌面应用没运行时，页面会显示后台不可用。
+- **兼容范围**：声明支持 DSH `>=0.2.0 <0.3.0`，实际验收范围有限，详见下文“限制与兼容性”。
+- **归因不是身份认证**：模型归因是候选库内的闭集概率（目前只有 GPT、Claude 两个家族共 18 个候选），真实模型不在库里时也会归到最相似的一个，不能据此认定身份或自动封锁模型。
+
+---
 
 ## 工作流程
 
@@ -23,10 +67,6 @@ DSH 侧边栏 -> 主区域原生检测页面 -> 手动/定时质量检测 -> 插
 检测是主动测试与报告功能。目标可以加入监测范围，也可以随时手动运行任意题目；检测状态和结果不影响业务请求是否发往上游。
 
 同一用户、同一台机器的所有 DSH 工作目录与 profile 共享检测配置、监测目标、记录、人工评审及一套后台。多个入口同时使用时不会因数据目录锁出现第二个入口不可用；只有一套自动检测调度。切换页面或关闭检测面板不停止自动检测；退出 DSH 桌面应用时插件后台及活动任务一起结束。
-
-## 界面预览
-
-[质量题库](assets/screenshots/quality-bank.png)、[检测记录](assets/screenshots/history.png)与[模型归因](assets/screenshots/model-attribution.png)的截图由隔离的 DSH Web 宿主实际渲染，使用本地受控演示模型生成数据，用于展示功能与布局。市场展示顺序由根目录 `screenshots.json` 声明。
 
 ## 安装
 
