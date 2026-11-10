@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-处理任务或规格时，使用 `.scratch/` 下的本地 Markdown；先读 `docs/agents/issue-tracker.md`。
+拆分、分派或持续跟踪开发任务时，使用 `.scratch/` 本地 Markdown；先读 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 

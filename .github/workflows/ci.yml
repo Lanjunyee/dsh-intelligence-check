@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '26'
+
+      - name: 构建客户端
+        run: npm run build:client
+
+      - name: 检查客户端生成物已同步
+        run: git diff --exit-code -- plugin/client.js
+
+      - name: Go race 测试
+        run: npm test
+
+      - name: 插件测试
+        run: npm run test:plugin
+
+      - name: UI 基础测试
+        run: npm run test:ui
