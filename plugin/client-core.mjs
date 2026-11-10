@@ -99,7 +99,7 @@ function filterResults(state, filters) {
 function analyzeAnswer(record, prompt) {
   const answer = record.answer || '';
   const checks = [];
-  if (!answer) return checks;
+  if (!answer.trim()) return checks;
   checks.push(['回答长度', `${Array.from(answer).length} 字符 / ${answer.split(/\r?\n/).length} 行`]);
   if (record.error) checks.push(['完整性', '调用异常或截断，请结合已返回正文复核']);
   if (record.prompt === 'repeat') {

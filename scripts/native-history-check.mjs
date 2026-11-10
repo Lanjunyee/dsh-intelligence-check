@@ -17,6 +17,8 @@ const provider = 'history-provider';
 const model = 'history-model';
 const brokenModel = 'history-broken';
 const slowModel = 'history-slow';
+const emptyModel = 'history-empty';
+const truncatedModel = 'history-truncated';
 const personAnswer = '历史页受控回答：Thibault Sottiaux 是 OpenAI 的研究员。';
 
 const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
@@ -67,9 +69,11 @@ let browser;
 let failure;
 try {
   const controlledModel = await startControlledModelServer({
-    models: [model, brokenModel, slowModel],
+    models: [model, brokenModel, slowModel, emptyModel, truncatedModel],
     answer: async ({prompt, body}) => {
       if (body.model === brokenModel) return null;
+      if (body.model === emptyModel) return '   ';
+      if (body.model === truncatedModel) return {content: '截断模型的部分回答', finish_reason: 'length'};
       if (body.model === slowModel) await sleep(4000);
       const challenge = prompt.match(/(\d+)\s*个\s*1 到 355/);
       if (challenge) return traceSequence(Number(challenge[1]));
@@ -85,13 +89,13 @@ try {
     baseURL: `http://127.0.0.1:${port}/v1`,
     provider,
     displayName: 'History Provider',
-    models: [model, brokenModel, slowModel].map(id => ({id, name: id})),
+    models: [model, brokenModel, slowModel, emptyModel, truncatedModel].map(id => ({id, name: id})),
     defaultModel: model,
   })}
 ${pluginConfigOverride()}`);
   const host = await bootProfile('history');
   const {client} = await openPageSession(host);
-  for (const target of [model, brokenModel, slowModel]) {
+  for (const target of [model, brokenModel, slowModel, emptyModel, truncatedModel]) {
     const result = await postJSON(client, '/api/target', {provider, model: target, enabled: true});
     assert.equal(result.status, 200, result.text);
   }
@@ -131,14 +135,22 @@ ${pluginConfigOverride()}`);
   const failed = await trigger(client, brokenModel);
   assert.equal(failed.verdict, 'unavailable');
   assert.ok(failed.error, '调用失败的记录未保留错误原因');
+  const emptyRecord = await trigger(client, emptyModel);
+  assert.equal(emptyRecord.verdict, 'empty', '空回答未记录为空回答');
+  assert.equal(emptyRecord.answer.trim(), '', '空回答记录不应保留正文');
+  const truncatedRecord = await trigger(client, truncatedModel);
+  assert.equal(truncatedRecord.verdict, 'truncated', '截断回答未记录为回答截断');
+  assert.ok(truncatedRecord.answer, '截断回答未保留已返回正文');
 
   // 渲染后的列表在摘要中包含评审状态与秒级时间，
   // 因此浏览时能区分同一分钟内的记录。
-  await page.waitForFunction(count => document.querySelectorAll('.dic-record').length >= count, records.length + 1,
+  await page.waitForFunction(count => document.querySelectorAll('.dic-record').length >= count, records.length + 3,
     {timeout: 20000});
   const summaries = await page.locator('.dic-record summary').allTextContents();
   assert.ok(summaries.some(text => text.includes('确认通过')), '记录摘要未显示人工评审状态');
   assert.ok(summaries.some(text => /\d{2}:\d{2}:\d{2}/.test(text)), '记录摘要时间未精确到秒');
+  assert.ok(summaries.some(text => text.includes('空回答')), '记录摘要未显示空回答');
+  assert.ok(summaries.some(text => text.includes('回答截断')), '记录摘要未显示回答截断');
 
   // 对比选择器必须以可区分的方式呈现同一分钟内的记录。
   await page.locator('details.dic-details summary', {hasText: '回答对比'}).click();
@@ -150,6 +162,26 @@ ${pluginConfigOverride()}`);
   assert.notEqual(optionA.text, optionB.text, '同分钟记录在对比选择器中无法区分');
   for (const option of [optionA, optionB]) {
     assert.match(option.text, /\d{2}:\d{2}:\d{2}/, '对比选项未显示秒级时间');
+  }
+
+  // 选择后两张对比卡片必须能分辨 A/B，并完整呈现该条回答的
+  // 模型、秒级时间、题目、结果、用量、评审与正文。
+  const compareSelectA = page.locator('.dic-field', {hasText: '回答 A'}).locator('select');
+  const compareSelectB = page.locator('.dic-field', {hasText: '回答 B'}).locator('select');
+  await compareSelectA.selectOption(optionA.value);
+  await compareSelectB.selectOption(optionB.value);
+  const verdictNames = {passed: '通过', unavailable: '检测不可用', manual: '待人工评价', failed: '未通过', empty: '空回答', truncated: '回答截断'};
+  for (const [index, record] of [sameMinutePair[0], sameMinutePair[1]].entries()) {
+    const card = page.locator('.dic-compare-card').nth(index);
+    await card.getByText(index === 0 ? '回答 A' : '回答 B', {exact: true}).waitFor({timeout: 5000});
+    const text = await card.textContent();
+    assert.match(text, new RegExp(provider + ' / ' + model), `对比卡片 ${index + 1} 未显示模型`);
+    assert.ok(text.includes(secondKey(record)), `对比卡片 ${index + 1} 未显示秒级时间`);
+    assert.match(text, /人物/, `对比卡片 ${index + 1} 未显示题目`);
+    assert.ok(text.includes(verdictNames[record.verdict] || record.verdict), `对比卡片 ${index + 1} 未显示结果`);
+    assert.match(text, /tokens|用量不可用/, `对比卡片 ${index + 1} 未显示用量`);
+    assert.ok(text.includes(index === 0 ? '确认通过' : '待确认'), `对比卡片 ${index + 1} 未显示评审`);
+    assert.match(await card.locator('.dic-record-answer').textContent(), /Thibault Sottiaux/, `对比卡片 ${index + 1} 未显示正文`);
   }
 
   // 筛选无匹配与空历史是不同状态。
@@ -187,6 +219,33 @@ ${pluginConfigOverride()}`);
   ]);
   const downloaded = await readFile(await download.path(), 'utf8');
   assert.equal(downloaded, reviewed.answer, '下载内容不是该记录的原始回答');
+
+  // 展开失败记录仍能看到调用失败的真实原因。
+  const failedCard = page.locator('.dic-record').filter({hasText: '检测不可用'});
+  await failedCard.locator('summary').click();
+  const failedReason = failedCard.locator('.dic-record-body .dic-error');
+  await failedReason.waitFor({timeout: 5000});
+  assert.ok((await failedReason.textContent()).includes(failed.error), '展开记录未显示真实错误原因');
+
+  // 空回答与截断回答分别显示真实状态，且截断记录保留已返回正文。
+  const emptyCard = page.locator('.dic-record').filter({hasText: '空回答'}).first();
+  await emptyCard.locator('summary').click();
+  const emptyStatus = emptyCard.locator('.dic-record-status');
+  await emptyStatus.waitFor({timeout: 5000});
+  assert.match(await emptyStatus.textContent(), /空回答/, '展开空回答记录未显示空回答状态');
+  assert.equal(await emptyCard.locator('.dic-record-body .dic-error').count(), 0,
+    '空回答被呈现为错误');
+  assert.match(await emptyCard.locator('.dic-record-answer').textContent(), /未返回回答正文/,
+    '展开空回答记录未说明没有正文');
+  const truncatedCard = page.locator('.dic-record').filter({hasText: '回答截断'}).first();
+  await truncatedCard.locator('summary').click();
+  const truncatedStatus = truncatedCard.locator('.dic-record-status');
+  await truncatedStatus.waitFor({timeout: 5000});
+  assert.match(await truncatedStatus.textContent(), /回答被截断/, '展开截断记录未显示真实原因');
+  assert.equal(await truncatedStatus.locator('.dic-warning').count(), 1, '截断记录未使用警告状态');
+  assert.equal(await truncatedStatus.locator('.dic-error').count(), 0, '截断记录被呈现为错误');
+  assert.equal(await truncatedCard.locator('.dic-record-answer').textContent(), '截断模型的部分回答',
+    '截断记录未保留已返回正文');
 
   // 导出沿用既有载荷：当前筛选记录及其原始数据，并附加导出时间。
   await verdictSelect.selectOption('unavailable');
@@ -250,15 +309,36 @@ ${pluginConfigOverride()}`);
   assert.match(cancelledSummary, /已取消/, '历史摘要未显示已取消');
   assert.doesNotMatch(cancelledSummary, /检测不可用/, '历史摘要仍显示检测不可用');
   assert.match(await verdictSelect.locator('option[value="cancelled"]').textContent(), /已取消/);
+  const cancelledCard = page.locator('.dic-record').filter({hasText: '已取消'});
+  await cancelledCard.locator('summary').click();
+  const cancelledStatus = cancelledCard.locator('.dic-record-status');
+  await cancelledStatus.waitFor({timeout: 5000});
+  assert.match(await cancelledStatus.textContent(), /已取消/, '展开记录未显示已取消');
+  assert.equal(await cancelledCard.locator('.dic-record-body .dic-error').count(), 0,
+    '已取消记录在展开内容中仍按错误显示');
   await verdictSelect.selectOption('');
   await page.waitForFunction(count => document.querySelectorAll('.dic-record').length === count,
     (await getState(client)).state.results.length, {timeout: 5000});
 
+  // 质量题库阅读区对空回答给出明确说明，而不是留下空白正文。
+  await page.getByRole('tab', {name: /质量题库/}).click();
+  await page.locator('#dic-view-tests .dic-composer [aria-label="检测模型"]').click();
+  await page.locator('.dic-menu-pop').getByRole('option', {name: `${provider} / ${emptyModel}`, exact: true}).click();
+  await page.locator('#dic-view-tests .dic-composer [aria-label="测试题"]').click();
+  await page.locator('.dic-menu-pop').getByRole('option', {name: /知识覆盖 \/ 人物/}).click();
+  await page.locator('.dic-answer-body', {hasText: '本次回答为空。'}).waitFor({timeout: 5000});
+  assert.equal((await page.locator('.dic-answer-title .dic-state').textContent()).trim(), '空回答',
+    '质量题库未显示空回答状态');
+  assert.equal(await page.locator('.dic-thread .dic-banner').filter({hasText: '空回答'}).count(), 0,
+    '质量题库将空回答呈现为错误横幅');
+  await page.getByRole('tab', {name: /检测记录/}).click();
+
   // 同一条记录在回答记录选择器中也显示为已取消。
   await page.getByRole('tab', {name: /质量题库/}).click();
-  await page.locator('#dic-view-tests .dic-test-controls select').first()
-    .selectOption({label: `${provider} / ${slowModel}`});
-  await page.locator('#dic-view-tests .dic-question-list .dic-question', {hasText: '知识覆盖 / 人物'}).click();
+  await page.locator('#dic-view-tests .dic-composer [aria-label="检测模型"]').click();
+  await page.locator('.dic-menu-pop').getByRole('option', {name: `${provider} / ${slowModel}`, exact: true}).click();
+  await page.locator('#dic-view-tests .dic-composer [aria-label="测试题"]').click();
+  await page.locator('.dic-menu-pop').getByRole('option', {name: /知识覆盖 \/ 人物/}).click();
   const answerOptions = await page.getByLabel('回答记录').locator('option').allTextContents();
   assert.ok(answerOptions.some(text => /已取消/.test(text)), '回答记录选项未显示已取消');
   assert.ok(!answerOptions.some(text => /检测不可用/.test(text)), '回答记录选项仍显示检测不可用');

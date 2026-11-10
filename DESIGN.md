@@ -1,276 +1,311 @@
 ---
 name: 模型质量检测
-description: DSH 插件内“检测工作页”的视觉设计系统
+description: DSH 插件内“模型质量检测”工作页的 Code 风格视觉设计系统
 colors:
-  accent: "color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f)"
   paper: "var(--dsw-alias-bg-base)"
-  ground: "color-mix(in srgb, var(--dic-accent) 5%, var(--dic-paper))"
-  selected: "color-mix(in srgb, var(--dic-accent) 11%, var(--dic-paper))"
-  border: "color-mix(in srgb, var(--dic-accent) 16%, var(--dic-paper))"
-  muted: "color-mix(in srgb, var(--dsw-alias-label-primary) 66%, var(--dic-ground))"
+  panel: "color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base))"
+  surface: "color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base))"
+  hover: "color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base))"
+  selected: "color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base))"
+  border: "color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base))"
+  border-soft: "color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base))"
   ink: "var(--dsw-alias-label-primary)"
   ink-secondary: "var(--dsw-alias-label-secondary)"
-  layer-1: "var(--dsw-alias-bg-layer-1)"
-  layer-2: "var(--dsw-alias-bg-layer-2)"
-  success: "color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, var(--dsw-alias-label-primary))"
-  error: "color-mix(in srgb, var(--dsw-alias-state-error-primary) 55%, var(--dsw-alias-label-primary))"
-  warning: "color-mix(in srgb, var(--dsw-alias-state-warn-primary) 40%, var(--dsw-alias-label-primary))"
+  ink-muted: "color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base))"
+  focus: "var(--dsw-alias-label-primary)"
+  success: "color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary))"
+  error: "color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary))"
+  warning: "color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary))"
 typography:
   page-title:
     fontFamily: "var(--dsw-font-family)"
-    fontSize: "22px"
+    fontSize: "14px"
     fontWeight: 600
-    lineHeight: 1.35
+    lineHeight: 1.4
   section-title:
     fontFamily: "var(--dsw-font-family)"
-    fontSize: "17px"
+    fontSize: "15px"
+    fontWeight: 600
+    lineHeight: 1.45
+  subheading:
+    fontFamily: "var(--dsw-font-family)"
+    fontSize: "13px"
     fontWeight: 600
     lineHeight: 1.5
+  modal-title:
+    fontFamily: "var(--dsw-font-family)"
+    fontSize: "16px"
+    fontWeight: 600
+    lineHeight: 1.45
   body:
     fontFamily: "var(--dsw-font-family)"
-    fontSize: "14px"
+    fontSize: "13px"
   answer:
     fontFamily: "var(--dsw-font-family)"
     fontSize: "15px"
-    lineHeight: 1.95
+    lineHeight: 1.75
   label:
     fontFamily: "var(--dsw-font-family)"
     fontSize: "13px"
   hint:
     fontFamily: "var(--dsw-font-family)"
     fontSize: "12px"
-    lineHeight: 1.7
+    lineHeight: 1.65
   micro:
     fontFamily: "var(--dsw-font-family)"
     fontSize: "11px"
     lineHeight: 1.5
   code:
     fontFamily: "var(--ds-font-family-code)"
-    fontSize: "12px"
-    lineHeight: 1.8
-  code-answer:
-    fontFamily: "var(--ds-font-family-code)"
     fontSize: "13px"
-    lineHeight: 1.95
+    lineHeight: 1.7
 rounded:
-  sm: "6px"
-  md: "8px"
-  lg: "12px"
+  segment: "2px"
+  option: "7px"
+  corner: "8px"
+  control: "9px"
+  panel: "10px"
+  container: "12px"
+  composer: "14px"
   pill: "999px"
 spacing:
   xs: "4px"
-  sm: "8px"
-  md: "12px"
-  lg: "16px"
-  xl: "24px"
-  2xl: "32px"
+  sm: "6px"
+  md: "8px"
+  lg: "10px"
+  xl: "12px"
+  2xl: "14px"
+  3xl: "16px"
+  4xl: "20px"
+  5xl: "24px"
+  6xl: "28px"
+  7xl: "32px"
+  8xl: "40px"
 components:
   button-primary:
-    backgroundColor: "{colors.accent}"
+    backgroundColor: "{colors.ink}"
     textColor: "{colors.paper}"
-    rounded: "{rounded.sm}"
-    padding: "9px 14px"
-    height: "40px"
+    rounded: "{rounded.control}"
+    padding: "8px 12px"
+    height: "38px"
   button-primary-hover:
-    backgroundColor: "color-mix(in srgb, var(--dic-accent) 88%, var(--dic-paper))"
-  button-icon:
+    backgroundColor: "color-mix(in srgb, var(--dsw-alias-label-primary) 86%, var(--dsw-alias-bg-base))"
+  button-secondary:
     backgroundColor: "transparent"
     textColor: "{colors.ink}"
-    rounded: "{rounded.sm}"
-    size: "40px"
-  select:
+    rounded: "{rounded.control}"
+    padding: "8px 12px"
+    height: "38px"
+  button-icon:
+    backgroundColor: "transparent"
+    textColor: "{colors.ink-secondary}"
+    rounded: "{rounded.control}"
+    size: "38px"
+  menu-trigger:
     backgroundColor: "{colors.paper}"
     textColor: "{colors.ink}"
-    rounded: "{rounded.sm}"
-    padding: "9px 11px"
+    rounded: "{rounded.control}"
+    padding: "6px 10px"
+    height: "40px"
+  input:
+    backgroundColor: "{colors.paper}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.control}"
+    padding: "8px 10px"
     height: "40px"
   tab:
     backgroundColor: "transparent"
     textColor: "{colors.ink-secondary}"
-    rounded: "0"
-    padding: "10px 0 13px"
-    height: "44px"
+    rounded: "{rounded.corner}"
+    padding: "0 10px"
+    height: "32px"
   tab-selected:
-    textColor: "{colors.accent}"
-  question-row:
-    backgroundColor: "transparent"
-    textColor: "{colors.ink}"
-    rounded: "{rounded.sm}"
-    padding: "10px"
-    height: "46px"
-  question-row-selected:
     backgroundColor: "{colors.selected}"
-    textColor: "{colors.accent}"
-  workspace:
-    backgroundColor: "{colors.paper}"
-    rounded: "{rounded.lg}"
+    textColor: "{colors.ink}"
+  composer:
+    backgroundColor: "{colors.surface}"
+    rounded: "{rounded.composer}"
+    padding: "10px 12px 8px"
+  status:
+    textColor: "{colors.ink-secondary}"
 ---
 
 # 设计系统：模型质量检测
 
 ## Overview
 
-**Creative North Star: “检测答卷”**
+**Creative North Star: “宿主工作台”**
 
-界面像一张正在填写的答卷：左侧是待选题目与模型，右侧是留白充足的回答阅读区；操作与选择用深绿标记，配置区以极浅的绿色灰度退后。整体服务于“选模型、选题目、运行、读回答”这条主线，不用装饰性图形分散注意力。
+这个界面不是一张独立的品牌页面，而是 DSH 宿主里的一张工作台：纸张色底、极浅的面板与细边界、低对比的次级文字，以及唯一一处深色反转的主操作。它借用本机 Claude Desktop Code 界面的中性灰阶语言，让插件看起来像宿主自带的工具，而不是嵌入进来的另一套产品。
 
-视觉密度中等偏低，层级依靠底色、边框和字重，而不是卡片堆叠或阴影。所有颜色、字体、圆角与浮层均取自 DSH 宿主语义变量或由 `color-mix` 派生，因此明暗主题随宿主自然切换。
+视觉重心从旧版的“绿色检测答卷”转到“居中的回答阅读列 + 底部 Code 形操作区”。质量题库只保留一条 760px 的阅读列，模型与题目收进底部操作区；监测、指纹与记录页则使用 1040px 的内容区放置表格与分组。层级依赖字重、留白、底色差（文字色的 2.5%–12% 混合）与 1px/0.5px 边界，而不是卡片堆叠、彩色强调或投影。
+
+所有颜色、字体、圆角与浮层都从宿主语义变量派生，浅色与深色主题随宿主自动切换；界面不维护第二套主题色。
 
 **Key Characteristics:**
-- 浅绿灰配置区、白色阅读区、深绿操作与选中态。
-- 宿主无衬线字体承载正文，等宽字体只用于代码与计数。
-- 标准控件尺寸（40px 控件、44px 标签页/摘要行），精确、克制。
-- 平面为主，分层靠色调与细边框；浮层才使用宿主抬升。
+- 中性灰阶，没有独立强调色；唯一的高对比是一个深色实心主操作。
+- 宿主 sans 承担界面与自然语言回答；等宽字体只用于代码、计数、ID 与概率。
+- 紧凑标题（14/15px）、32px 页签、38/40px 控件，层级靠留白与字重。
+- 质量题库是 760px 居中阅读列加底部 Code 形操作区；管理页是 1040px 内容区。
+- 平面为主；阴影只属于菜单、模态框与展开预览。
 
 ## Colors
 
-单一深绿强调色，配以宿主纸张色、两级中性灰与低饱和状态色。
+一套由宿主文字色叠在宿主底色上生成的中性灰阶；页面底色始终是宿主纸张色，层级靠 2.5%–12% 的文字色覆盖度建立。
 
 ### Primary
-- **检测深绿**（`color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f)`）：主按钮、选中项文字与下划线、焦点环。它是唯一强调色。
+
+本系统没有独立强调色。主操作采用最深文字色作底、页面底色作字（`var(--dsw-alias-label-primary)` / `var(--dsw-alias-bg-base)`），因此“强调”来自对比反转，而不是第二个色相。
 
 ### Neutral
-- **纸张白**（`var(--dsw-alias-bg-base)`）：页面与阅读区底色、主按钮文字。
-- **配置浅绿灰**（`color-mix(in srgb, var(--dic-accent) 5%, var(--dic-paper))`）：左侧配置区、概览条。
-- **选中浅绿**（`color-mix(in srgb, var(--dic-accent) 11%, var(--dic-paper))`）：题目行选中与悬停。
-- **边界绿灰**（`color-mix(in srgb, var(--dic-accent) 16%, var(--dic-paper))`）：输入框、工作区分隔线与标签页底线。
-- **弱化文字**（`color-mix(in srgb, var(--dsw-alias-label-primary) 66%, var(--dic-ground))`）：提示、字段标签与次级说明。
+- **纸张底**（`var(--dsw-alias-bg-base)`）：页面、质量题库阅读区、主操作文字色。
+- **面板**（文字色 2.5%）：顶部概览、设置弹窗、菜单浮层底色。
+- **抬高面**（文字色 4%）：底部操作区、状态区、归因控制区、记录正文块。
+- **悬停面**（文字色 6%）：按钮、页签、菜单项与记录行的悬停底色。
+- **选中面**（文字色 9%）：当前页签、菜单选中项、文本选区。
+- **边界**（文字色 12%）：输入框、菜单触发器、按钮、浮层外框。
+- **柔边界**（文字色 7.5%）：表格分隔线、折叠行、预览外框、分组线。
 - **主文字 / 次文字**（`var(--dsw-alias-label-primary)` / `var(--dsw-alias-label-secondary)`）：正文与元信息。
-- **层一 / 层二**（`var(--dsw-alias-bg-layer-1)` / `var(--dsw-alias-bg-layer-2)`）：代码块、预览底与开关轨道。
+- **弱化文字**（文字色 64%）：占位符、字段标签、空状态说明、计数。
 
 ### Status
-- **成功 / 错误 / 警告**（分别由宿主 success、error、warn 语义色与主文字混合）：只表达连接、运行与校验状态，不参与装饰。
+- **成功**（宿主 success 55% + 主文字）：连接正常、检测通过、评审通过、记录结果与评审状态文字。
+- **错误**（宿主 error 62% + 主文字）：连接中断、检测失败、清理按钮、错误横幅。
+- **警告**（宿主 warn 62% + 主文字）：截断、运行中、空回答、后台健康异常。
 
-**宿主同源规则。** 不新增独立配色；除强调色中既有的 `#18835f` 绿色种子外，不写死十六进制。新增色必须由宿主语义变量经 `color-mix` 派生。
+**宿主派生规则。** 不引入新的色相或第二套主题色；除预览画布必须的 `#fff` 外，不写死十六进制。所有界面颜色必须由 `--dsw-alias-label-primary`、`--dsw-alias-label-secondary` 与 `--dsw-alias-bg-base` 混合；状态文字使用宿主 success/error/warn 语义色的 55%/62% 混合，6px 状态点与失败分段直接使用宿主状态色。
+
+**单点高对比规则。** 同一视图只允许一个深色实心主操作（质量题库的“运行”、设置的“保存设置”、指纹页的“运行三条指纹挑战”）。其余操作一律透明底加 1px 边界；不要把多个按钮做成同等视觉权重。
 
 ## Typography
 
-**正文与标题：** DSH 宿主无衬线字体（`var(--dsw-font-family)`）
-**代码与计数：** 宿主等宽字体（`var(--ds-font-family-code)`）
+**Display Font:** 无独立展示字体，沿用宿主界面字体
+**Body Font:** DSH 宿主无衬线字体（`var(--dsw-font-family)`）
+**Label/Mono Font:** 宿主等宽字体（`var(--ds-font-family-code)`）
 
-**Character:** 一套字体贯穿界面，靠字号、字重与行高建立层级；等宽字体只出现在代码、追踪计数等需要对齐的位置。
+**Character:** 一套宿主 sans 同时承担界面与自然语言回答，字号克制在 11–16px；等宽只在代码、计数、模型 ID 与概率这些需要保真或对齐的位置出现。
 
 ### Hierarchy
-- **页面标题**（600，22px，1.35）：顶部产品名。
-- **区块标题**（600，17px，1.5）：回答标题、空状态标题。
-- **正文**（14px）：通用界面文本，字重和行高继承宿主。
-- **回答正文**（400，15px，1.95）：右侧流式回答，长文优先，最大高度 560px 内滚动。
-- **标签**（400，13px）：字段名、题目行。
-- **提示**（400，12px，1.7）：说明、元信息与免责声明。
-- **微型标签**（400，11px）：题目行的“自动评估/人工评审”备注，以及标签计数；计数使用等宽字体。
-- **代码**（400，12px，1.8）：原始提示词、预览代码等普通代码内容。
-- **代码回答**（400，13px，1.95）：HTML、SVG 与世界海陆地图题目的原始回答；使用宿主等宽字体，并沿用回答正文的行高比例。与“代码”分开定义，不将两者统一。
+- **页面标题**（600，14px，1.4）：顶栏产品名“模型质量检测”。
+- **区块标题**（600，15px，1.45）：回答标题、ModelTrace、检测记录、空状态标题。
+- **小节标题**（600，13px，1.5）：记录内的“原始回答”“提示词原文”、设置分组标题。
+- **正文**（400，13px）：通用界面文本、字段值、菜单项、表格内容。
+- **回答正文**（400，15px，1.75）：自然语言回答、对比卡与记录展开正文。
+- **标签**（400，13px）：字段名、题目名、设置行标签。
+- **提示**（400，12px，1.65）：说明、元信息、时间、错误原因、免责声明。
+- **微型标签**（400，11px，1.5）：页签计数、表格列名、概览标签、菜单说明。
+- **代码**（400，13px，1.7，等宽）：原始提示词、预览代码与代码回答统一使用这一档。
 
-**宿主字体规则。** 不引入 Web Font，不覆盖宿主字体栈；标题与正文的差异只通过字号和字重表达。
+**紧凑标题规则。** 标题最大只到弹窗的 16px；页面标题 14px、区标题 15px、小节 13px。不要用 display 级字号制造层级，层级由字重、间距与容器边界承担。
+
+**等宽专用规则。** 等宽字体只用于代码、计数、模型 ID、概率、字节与 token 数；自然语言回答与界面说明绝不用等宽。
+
+**统一代码排版规则。** 普通代码内容与代码回答共用 13px/1.7 的宿主等宽体，不再维护“代码 12px、代码回答 13px”的两档旧约定。
 
 ## Layout
 
-页面内边距 28px/32px/40px，主工作区为两栏：左侧固定 264px 配置区，右侧自适应阅读区；整体最小高度 640px，外边一条 1px 边界绿灰线，12px 圆角包裹。配置区与阅读区分别内缩 22–28px。
+顶栏是一行三列网格：左侧品牌与连接状态、中间四个页签、右侧刷新与设置。顶栏内边距 10px 20px 8px，页签间距 2px；页签本体 32px 高、左右 10px 内边距、8px 圆角。
 
-内容节奏以 8/12/16/24px 为主：标签页下 24px，区块间距 18px，字段内 8px，按钮组 8–12px。顶部标题、连接状态与设置入口同排；四个标签页横向排列，底部 1px 分隔线。
+质量题库是纵向满高布局：`.dic-conversation` 独立滚动，阅读列与底部操作区都以 760px 为上限居中。阅读列内边距 28px 20px 32px、行间距 14px；底部操作区是 flex 流中的固定行，不覆盖正文，外层 8px 20px 14px，内层 10px 12px 8px、14px 圆角、4% 文字色抬高面。操作区字段为 1.25fr / 1fr 两列，运行按钮 36px 高、8px 圆角。
 
-响应式以容器查询为准：可用宽度 ≤740px 时改为上下排列，题目列表折叠为常规选择器，运行按钮移至整行；≤560px 时配置区控件与模型/题目选择改为单列，监测页的添加目标表单同样改为单列全宽，避免长模型名在并排的半宽选择器中不可读；≤420px 时进一步单列、收紧内边距，并隐藏标签页的装饰图标、把标签间距收到 16px，使四个标签同屏可读。页面外层在 ≤820px / ≤520px 时降低留白。
+监测、指纹与记录页使用 `.dic-section`：最大 1040px、居中、20px 行间距、28px 0 40px 内边距。概览条是 `auto-fit minmax(150px, 1fr)` 的一体化面板，组与组之间用 1px 柔边界分隔；监测目标表与归因候选表各在自己的滚动容器内横向滚动。
 
-需要横向空间的表格在自身滚动容器内滚动：容器查询 ≤740px 时，模型监测目标表最小宽度 720px、模型归因全部候选表 640px，仅应用于各自带局部滚动容器的表格，不得撑宽检测页面；无需滚动的候选表按可用宽度排版。
+容器查询以 `.dic-page` 的 inline-size 为基准，而不是视口宽度；实际验证覆盖 1440px 桌面、390px 移动、1280×600 与 390×560 低高度，以及各断点两侧（861/860、741/739、481/479）。
+
+- **≤860px**：顶栏改为两行，品牌与操作在第一行、页签在第二行并左对齐；检测记录从六列摘要切换为卡片摘要（时间为左上，结果与评审靠右，模型独占一行，题目与用量在末行），并显示“评审：”前缀。
+- **≤740px**：阅读列与操作区收窄内边距；评审字段、归因报告、回答对比、记录对比选择器改为单列；历史筛选四列变两列并让导出/清理等宽铺满；归因操作区改单列；候选行由三列变两列、进度条移到名称下方；表格启用 640px（候选）/720px（监测目标）的最小宽度。
+- **≤560px**：底部操作区两个菜单改单列，运行按钮占满整行；监测页添加目标表单改单列；概览条改两列，最后一项跨两列；设置行改单列。
+- **≤480px**：页签间距归零、左右内边距收到 7px、字号 12px，并隐藏页签装饰图标，四个入口仍同屏可读。
+- **≤420px**：顶栏、阅读列与操作区进一步收紧；操作区圆角降为 12px；回答工具栏占满整行；空状态降低最小高度；菜单浮层宽度收到 320px。
+
+**阅读列规则。** 质量题库的回答与底部操作区共用 760px 上限并居中；只有监测、指纹、记录这类管理内容才使用 1040px。不要把管理表格的宽度带进阅读列。
+
+**操作区不覆盖规则。** 底部操作区是布局中的一行，不是浮层；长回答只在中部阅读区滚动，评审表单、菜单与预览不得被它遮挡。
 
 ## Elevation & Depth
 
-系统默认平面：没有常驻阴影，层级由白色阅读区、浅绿配置区、1px/0.5px 边框与选中底色表达。只有模态框与展开预览使用宿主抬升与遮罩，保持“浮层才是浮层”的语义。
+系统默认平面。静态层级由纸张底、2.5%/4% 抬高面、6%/9% 状态面以及 12%/7.5% 边界表达，没有常驻阴影。
 
 ### Shadow Vocabulary
-- **浮层抬升**（`var(--dsw-elevation-prominent)`）：模态框与展开预览的固定层。
-- **遮罩**（`var(--dsw-alias-bg-mask-2)`）：模态背景。
+- **菜单浮层**（`var(--dsw-elevation-prominent)`）：模型、题目与批次菜单向上展开时使用。
+- **模态框**（`var(--dsw-elevation-prominent)`）：检测设置弹窗。
+- **展开预览**（`var(--dsw-elevation-prominent)`）：固定的预览画布。
+- **遮罩**（`var(--dsw-alias-bg-mask-2)`）：模态框背景。
 
-**平面分层规则。** 静态内容区不加阴影；需要区分层级时优先用 `ground`、`selected` 与边界绿灰，而不是投影。
+**浮层专属规则。** 阴影只用于真正离开文档流的浮层：菜单、模态框、固定预览。静态分区、卡片、表格与底部操作区一律不加阴影；需要区分层级时先用抬高面与柔边界。
 
 ## Shapes
 
-控件与题目行使用 6px 圆角；概览条 8px；工作区外框 12px；开关为全圆角胶囊。标签页底部选中标记是 2px 直线，输入框与按钮为 1px 描边，分隔线为 1px 或 0.5px 的宿主边框色。
+控件圆角停在 7–10px：菜单选项 7px，页签、横幅与代码块 8px，按钮、输入框、菜单触发器 9px，概览与状态卡 10px。容器用 12px（窄屏操作区）与 14px（底部操作区、模态框）；只有开关轨道与状态点是全圆角。
 
-整体几何是“标准控件 + 一个柔和容器”：只有工作区外框使用 12px，内部保持小圆角，避免层层嵌套的卡片感。
+边界以 1px 实线为主，表格行与折叠行使用 0.5px 柔边界；页签选中态是 9% 文字色的圆角底，不再使用旧版的 2px 下划线。滚动条为细轨道，滑块使用 12% 边界色。折叠 disclosure 是 6px 的 1.5px 边框小箭头，展开时旋转 45°；进度分段是 6px 高、2px 圆角的短条。
+
+**小圆角规则。** 控件保持在 7–10px；12/14px 只留给底部操作区与模态框；不要给按钮做胶囊形，也不要给静态区块加 16px 以上的大圆角。胶囊只属于开关轨道与状态点。
 
 ## Components
 
 ### Buttons
-- **Shape:** 6px 圆角，40px 最小高度，9px 14px 内边距。
-- **Primary:** 检测深绿底、纸张白字；用于运行检测等唯一主操作。
-- **Icon-only:** 40×40px，透明底、1px 边界绿灰描边，用于复制、下载等次级操作。
-- **Hover / Focus:** 悬停时主按钮混入 88% 强调色并向纸张白靠拢，次级按钮使用宿主 hover 背景；键盘焦点统一为 2px 强调色轮廓、外扩 3px。
-- **Disabled:** 透明度 0.45，光标恢复默认。
+- **Shape:** 38px 最小高度，9px 圆角，8px 12px 内边距，图标与文字间距 6px。
+- **Primary:** 主文字色实心底、纸张色文字，用于每屏唯一的主操作；悬停时为 86% 主文字色 + 14% 纸张色。
+- **Secondary:** 透明底、1px 边界、主文字色；悬停转 6% 文字色面。
+- **Icon-only:** 38×38px，透明底；顶栏、回答工具栏与表格行内使用 32–34px 的透明变体，必须带 `aria-label`。
+- **Danger:** 错误色文字与错误色 42% 混合的描边，只用于“清理筛选记录”这类不可逆操作。
+- **Disabled:** 透明度 0.4，光标恢复默认。
+- **Focus:** 2px 实线 `--dic-focus`，外扩 2px。
 
 ### Tabs
-- 44px 最小高度，28px 间距，透明底，无圆角；默认次文字色，选中为强调色加 600 字重，并出现 2px 底部强调线。计数紧随标签，使用 11px 等宽次文字。
-- 标签图标只作提示；可用宽度 ≤420px 时隐藏图标并改用 16px 间距，保留全部四个文字标签，不把入口藏在横向滚动之后。若仍超出，标签栏自身可横向滚动。
+四个工作页签常驻顶栏中部，32px 最小高度、8px 圆角、2px 间距。默认次文字色；选中态为 9% 文字色底、主文字色、字重 500。页签计数紧随文字，11px 等宽、弱化文字色。≤480px 隐藏页签图标、间距归零、左右内边距 7px、字号 12px，保留全部四个文字入口，不把入口藏进菜单。
+
+### Menus
+模型、题目与批次选择使用向上展开的菜单。触发器 40px 高、9px 圆角、1px 边界、纸张色底，左侧 11px 弱化说明（“模型”“题目”）、右侧 13px 当前值，长名称单行省略。浮层宽 `min(340px, 100vw - 32px)`、最大高 `min(430px, 60vh)`、10px 圆角、面板色底与宿主抬升阴影，距触发器 6px；选项 7px 圆角、7px 10px 内边距，选中项用 9% 文字色底。≤420px 浮层宽 320px。
 
 ### Inputs / Fields
-- 输入框与选择器同为 40px 高、6px 圆角、1px 边界绿灰、纸张白底，内边距 9px/11px。
-- 字段标签为 13px 弱化文字，与控件间距 8px。
-- 焦点使用统一强调色轮廓；占位文字使用弱化文字色。设置弹窗中的原生复选框同样使用该焦点轮廓。
-- 模型选择器保留“提供方 / 模型”完整标签，并以 `title` 提供完整名称；长名称在控件内截断，不撑宽配置区。
+输入框、选择器与菜单触发器同为 40px 高、9px 圆角、1px 边界、纸张色底。字段标签 12px 弱化文字，与控件间距 6px；占位符用弱化文字色。设置弹窗中的数值输入使用 4% 抬高面、无描边，原生复选框以主文字色作为 accent-color。焦点统一为 2px 主文字色轮廓、外扩 2px。
 
-### Question Row
-- 46px 最小高度，10px 内边距，6px 圆角，整行可点击。
-- 原生单选按钮视觉隐藏但保留键盘可达；选中行使用选中浅绿底、强调色文字与 600 字重；未选中行悬停同样转为选中浅绿。
-- 背景与文字用 160ms ease-out 过渡，`prefers-reduced-motion` 下取消。
+### Detector Composer（signature）
+底部操作区复刻 Code 输入区的外形：整块 14px 圆角、4% 抬高面、1px 边界，内部左侧“模型”菜单、右侧“题目”菜单，底行左侧 11px 运行说明；右侧在运行中出现独立的“取消”按钮，主操作始终保持原位并显示“正在检测…”。运行按钮 36px 高、8px 圆角；无检测目标时主操作改为“添加检测目标”并切到监测页。菜单浮层向上展开，短视口内自身滚动；≤560px 两个菜单单列、运行整行；≤420px 圆角 12px。操作区不接收自由文本，不遮挡阅读列。
 
-### Workspace
-- 264px 配置区 + 自适应阅读区，12px 外圆角、1px 边界绿灰外框；配置区右侧 1px 分隔线，底部直角由圆角裁切承接。
-- 阅读区依次为回答标题与工具、记录选择、正文、辅助检查与人工评审；空状态居中，最小高度 350px。回答正文最少 180px、最多 560px，长文在正文内部滚动。
-- 记录选择的“最新回答”保持可选状态；具体记录选项使用秒级时间与状态区分同分钟的多次检测。
-- 无检测目标时，宽内容区在阅读空状态提供主添加入口；≤740px 时配置区运行按钮位置改为同一“添加检测目标”主操作，使窄屏首屏即可开始添加，阅读区空状态继续解释后续路径。
-- 主动取消的质量检测显示“已取消”与“检测已取消”，保留已返回正文，不呈现为“检测不可用”。
+### Status & Feedback
+记录与结果状态使用 11px/500 的文字而非胶囊底色（指纹批次状态为 12px/600），颜色与文字同时表达：通过＝成功色，失败/不可用＝错误色，运行中/截断/空回答＝警告色，取消/待评审＝次文字色。页面级错误横幅用错误色 7% 底、错误色文字；警告横幅用警告色 8% 底；成功反馈 4 秒后自动消退，错误反馈保留到下一次操作。连接状态是 6px 圆点加文字：正常宿主 success，连接中与服务异常宿主 warn，中断宿主 error。
 
-### Monitoring Targets
-- 概览条按“监测目标 / 自动检测 / 今日请求 / 已报告用量”分组：标签使用次文字色，数值加粗；组间以 28–36px 间距分隔并允许换行，≤560px 收紧到 24px。
-- 自动检测组标注“全局”，关闭时同时说明仍可手动检测，使全局配置与单个目标的监测开关不混淆。
-- 目标表列宽约为 15% / 37% / 17% / 16% / 15%，把主要宽度留给模型名；模型与提供方单元格以 `title` 提供完整文本，长模型名换行但不挤压开关与操作。
-- 监测开关开启态使用强调色轨道；开关旁的“已开启/已关闭”与颜色同时表达状态，不只依赖颜色。
-- 无检测目标时以虚线空状态替代表格，说明添加入口以及“开启监测后才纳入自动检测”；添加目标表单在 ≤560px 改为单列全宽。
-- 今日请求、已报告用量和预算计数沿用现有数据与含义；精修不改变预算、调度或目标语义。
+**状态双通道规则。** 任何状态都不能只靠颜色表达；颜色旁必须有“通过/失败/已取消/截断/待人工评价”等可见文字。
+
+### Overview Panel
+监测页顶部概览是一块 10px 圆角、面板色底、柔边界外框的一体化面板；内部按 `auto-fit minmax(150px, 1fr)` 分组，每组 66px 最小高度、11px 14px 内边距、组间 1px 柔边界。标签 11px 弱化、数值 14px/500 主文字，说明 11px 弱化。≤560px 改两列，最后一项跨两列。
+
+### Tables & History
+表格铺满内容区，表头 11px 弱化文字、下边 1px 柔边界，单元格 12px 内边距、行间 0.5px 柔边界。监测目标表列宽 15% / 37% / 17% / 16% / 15%，模型名换行不截断；需要横向空间的表格在自身滚动容器内滚动，容器查询 ≤740px 时目标表最小 720px、候选表最小 640px。
+
+检测记录在宽内容区是六列摘要：时间 118px、模型自适应、题目 136px、结果 92px、评审 108–136px、用量 82px，行高 42px，行末有 6px disclosure 箭头，展开旋转 45°。模型列单行省略并提供完整 `title`；人工评审始终显示文字。≤860px 改为卡片摘要并隐藏列头。展开正文中，自然语言回答 15px/1.75，代码回答 13px/1.7 等宽，正文最大高 420px 并在自身容器内滚动；提示词与预览代码同为 13px/1.7。
+
+### Comparison
+回答对比在宽内容区是两张等宽卡片，选择器与卡片都在 ≤740px 改单列。卡片头部为模型名与状态，元信息用 12px 提示文字，正文按自然语言/代码分别排版；选择项按“秒级时间 / 模型 / 题目 / 结果”排列，ModelTrace 的多次挑战在题目后附“挑战 N”。
 
 ### Settings Dialog
-- 表单分为“自动检测”和“每日请求预算”两个 fieldset 分组，组标题 14px/600，组间以 1px 边界分隔。
-- 自动检测说明使用当前自动题目的显示名称（如“牛奶推理”），不暴露内部标识；明确说明仅对已开启“监测”的目标生效，且手动检测不受该设置影响。
-- 每日上限说明紧邻其字段；模型目录与凭据说明作为弹窗级脚注。
-- 保留首次聚焦、Escape 与关闭按钮、草稿、轮询不覆盖、保存失败保留与重试等既有行为。
+设置弹窗宽 `min(560px, 100%)`（通用模态底为 520px）、20px 内边距、14px 圆角、面板色底与宿主抬升阴影，遮罩使用宿主 mask。标题 16px/600；分组标题 13px/600，组间 1px 柔边界；设置行是“说明 + 控件”两列，≤560px 单列。开关轨道 30×18px、全圆角，开启时主文字色轨道、纸张色圆点。Escape、关闭按钮、焦点返回与草稿保留行为不变。
 
 ### Model Attribution
-- 模型指纹页依次为操作区、批次状态区与归因结果；限制说明作为区块末尾的可见脚注，不放在操作区与进度之间。
-- 操作区使用浅绿灰底、1px 边界绿灰与 8px 圆角，把检测模型、检测批次与运行/取消收成一组；无检测目标时选择器禁用并显示“请先添加检测目标”。
-- 批次选择中的“最新批次”保持可选；具体批次选项使用秒级时间区分同分钟的多次运行。
-- 批次状态区同样使用浅绿灰底与 8px 圆角：7px 三段进度、已结束数量与时间，下一行为批次状态文字，再列出三条挑战状态；待执行分段使用边界绿灰，完成用主文字色，失败用错误色，状态同时有文字说明。
-- 归因结果使用 17px 区块标题与有效回答计数；最相似候选/家族名称 17px/600，闭集概率 15px 等宽。候选相似度列出前 3 名及百分比，完整排序放在可展开的局部滚动表格中，列宽为 50% / 30% / 20%。
-- 无批次时显示指纹图标、“暂无指纹检测记录”和当前模型说明；无目标时显示“尚未添加检测目标”与“前往模型监测”主操作。归因失败使用错误色提示块，标题为“本轮无法归因”，原因文字保留在块内；调用失败时状态区显示“批次未完成：调用失败”，并保留每条挑战的原因。
-- ≤740px 时操作区、状态区与结果纵向排列；候选行改为名称/概率两列，进度条放在名称下方；完整候选表保持 640px 局部横向滚动，不撑宽页面。≤420px 时收窄状态区与空状态内边距。
+指纹页依次为操作区、批次状态区与归因结果。操作区与状态区都是 14px 内边距、10px 圆角、4% 抬高面；三段进度条 6px 高、2px 圆角，完成用主文字色、失败用宿主错误色、取消用次文字色。归因结果的最相似候选 16px/600，概率 14px 等宽；候选相似度三列（名称 / 160px 条 / 64px 百分比），≤740px 改两列并把进度条移到名称下方。限制说明是区块末尾的 12px 可见脚注。
 
-### Feedback & Status
-- 页面级成功反馈 4 秒后自动消退；错误反馈保留到下一次操作。
-- 人工评审的保存反馈位于评审表单内，不放到标签栏上方。
-- 连接中断使用错误色状态点；后台健康异常使用警告色状态点，文案与颜色同时表达状态。
+### Preview
+HTML/SVG 预览使用白色画布（`#fff`）与 1px 柔边界、8px 圆角，图片固定 340px 高并居中留白；内嵌 iframe 440px 高。展开预览固定在视口内、14px 内边距、宿主大圆角与抬升阴影。白色只属于预览画布，不进入界面底色。
 
 ## Do's and Don'ts
 
 ### Do:
-- **Do** 使用宿主语义变量与 `color-mix` 派生色；明暗主题不单独维护。
-- **Do** 保持 40px 控件、44px 标签页/摘要行、46px 题目行的高度节奏。
-- **Do** 用浅绿灰配置区、白色阅读区、深绿操作与选中态组织“先配置、后阅读”的层级。
-- **Do** 让键盘焦点始终可见：2px 强调色轮廓、外扩 3px。
-- **Do** 用 160ms ease-out 表达选中与悬停，并尊重 reduced-motion。
+- **Do** 从宿主语义变量派生所有颜色；浅色与深色只维护一套混合公式。
+- **Do** 每屏只保留一个深色实心主操作，其余操作使用透明底加 1px 边界。
+- **Do** 保持 32px 页签、38px 按钮、40px 输入与菜单触发器的高度节奏。
+- **Do** 让质量题库的阅读列与底部操作区共用 760px 上限，管理页使用 1040px。
+- **Do** 让键盘焦点始终可见：2px 主文字色轮廓、外扩 2px。
+- **Do** 用 160ms ease-out 表达悬停、选中、开关与 disclosure，并在 reduced-motion 下全部取消。
+- **Do** 状态同时给出颜色与文字，表格只在自身容器内横向滚动。
 
 ### Don't:
-- **Don't** 写死十六进制色值（强调色既有的 `#18835f` 种子除外）或引入新的字体。
-- **Don't** 为静态区块添加阴影；浮层抬升只用于模态框与展开预览。
-- **Don't** 混用多套圆角；控件 6px、概览 8px、工作区 12px 之外不再扩展。
-- **Don't** 用装饰图形、图像或图标集替代信息层级；图标只作操作提示。
-- **Don't** 改变主操作与次级操作的色彩分工：深绿实心只给唯一主操作。
-
-## 检测记录与回答对比（任务 04）
-
-检测记录页沿用同一套“检测答卷”分级：筛选器属于配置层，记录摘要与展开正文属于阅读层，批量操作不得与阅读内容争夺注意力。
-
-- **筛选与批量操作：** 模型、结果、题目、评审四个筛选器在宽内容区等宽四列；≤740px（容器内容宽）改为两列。导出与清理另起一行、右对齐并带可见文字；≤740px 时两个按钮等宽并排，各控件均不被横向裁切。导出为次级按钮；清理使用错误色文字与描边，保留原有确认、记录范围与检测进行中的禁用/拒绝规则。
-- **记录摘要：** 宽内容区使用“时间 / 模型 / 题目 / 结果 / 评审 / 用量”六列并显示列标题；时间精确到秒，长模型名可换行且保留完整 `title`。人工评审状态始终显示（待确认、确认通过、标记问题），不只依赖颜色。ModelTrace 同秒的三条挑战按批次内顺序在题目后显示“挑战 N”，使用既有批次数据识别，不增加后台字段。≤740px 改为卡片式摘要：时间为左上，结果与评审靠右，模型独占一行，题目与用量在末行；隐藏列标题但保留“评审：”前缀。
-- **展开记录：** 依次为错误原因、人工评审状态、“原始回答”、正文、紧凑的“下载原始回答”按钮与“提示词原文”。自然语言回答用 15px/1.95 宿主无衬线体；HTML、SVG、世界海陆地图等代码回答用 13px/1.95 宿主等宽体。正文最大高度 480px 并在自身容器内滚动，不撑宽页面；提示词保持 12px 等宽代码排版。下载内容仍为该条记录的原始回答。
-- **回答对比：** 对比区在摘要中提示可选回答数量；两条选择器在宽内容区等宽两列，窄内容区单列。选项按“秒级时间 / 模型 / 题目 / 结果”排列；ModelTrace 挑战在题目后附“挑战 N”，使同秒记录可区分。选择后两张对比卡分别显示模型、结果徽标、时间、题目、用量与评审状态，正文按自然语言或代码回答分别排版。≤740px 时两张卡上下排列。
-- **空状态：** 完全没有检测记录时显示“暂无检测记录”并说明运行后会保存回答、评估与评审；筛选无匹配时显示“没有符合筛选条件的记录”并提示调整筛选，不把无匹配表述为检测失败。无可对比回答时保留入口并说明原因。
-- **焦点与状态：** 记录摘要、批量按钮、对比选择器与可滚动的原始回答共享 2px 强调色轮廓、外扩 3px 的键盘焦点；禁用、截断、取消与调用失败状态沿用既有语义色与文字说明。主动取消的质量检测在回答、记录选项、摘要、结果筛选与对比中一致显示“已取消”，原始存储 verdict 与导出数据保持不变。
+- **Don't** 恢复旧版的绿色强调色、浅绿配置区或 264px 两栏工作区。
+- **Don't** 引入第二个色相、第二套主题色或新的 Web Font。
+- **Don't** 给静态区块、表格或底部操作区加阴影；抬升只属于菜单、模态框与展开预览。
+- **Don't** 用 display 级大标题或 22px 页面标题；标题上限是弹窗的 16px。
+- **Don't** 用等宽字体排自然语言回答，或把代码回答单独降回 12px。
+- **Don't** 把页签选中态做成 2px 下划线；它是 9% 文字色的圆角底。
+- **Don't** 用颜色作为状态的唯一载体，或给图标按钮省略可访问名称。

@@ -92,7 +92,7 @@ node scripts/package-check.mjs
 cd dist && shasum -a 256 -c SHA256SUMS
 ```
 
-`manifest.json` 记录每个产物的平台、大小与 SHA-256。发行包通过 GitHub Releases 分发，并准备提交插件市场收录，不发布 npm；当前只在 macOS arm64 上执行真实平台安装，其余平台产物由交叉编译生成并通过布局与校验检查。
+`manifest.json` 记录每个产物的平台、大小与 SHA-256。发行包通过 GitHub Releases 分发，已收录于[插件市场](https://awesome-dsh-plugin.com/zh/p/Lanjunyee/dsh-intelligence-check/)，不发布 npm；当前只在 macOS arm64 上执行真实平台安装，其余平台产物由交叉编译生成并通过布局与校验检查。
 
 ## 首次配置
 

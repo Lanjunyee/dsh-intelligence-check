@@ -1,18 +1,29 @@
-# Issue tracker：GitHub
+# Issue tracker：本地 Markdown
 
-任务和规格保存在 `Lanjunyee/dsh-intelligence-check` 的 GitHub Issues，使用 `gh` 操作，显式指定 `--repo Lanjunyee/dsh-intelligence-check`。
+任务和规格保存在本仓库的 `.scratch/` 中。
 
-## 操作约定
+## 文件约定
 
-- 发布任务或规格：创建 GitHub issue。
-- 获取任务：用 `gh issue view` 读取正文、标签和评论。
-- 查找任务：用 `gh issue list`，按状态和标签筛选。
-- 多行正文或评论：写入临时文件，通过 `--body-file` 提交。
-- 父子任务：使用 GitHub 原生 sub-issues；不可用时，在子任务顶部写 `Part of #<父任务编号>`，并在父任务维护任务列表。
-- 阻塞关系：使用 GitHub 原生 issue dependencies；不可用时，在被阻塞任务顶部写 `Blocked by: #<编号>`。所有阻塞任务关闭后才可开始。
-- 关闭任务：先评论说明结果，再关闭 issue。
-- 首次写入前核实目标仓库；当前保留的原项目 upstream 不作为任务发布目标。
+- 每个功能一个目录：`.scratch/<feature>/`。
+- 规格：`.scratch/<feature>/spec.md`。
+- 实现任务：`.scratch/<feature>/issues/<NN>-<slug>.md`，每个任务一个文件；同一功能内从 `01` 连续编号。
+- `State:` 记录开闭状态：`open` 或 `closed`。
+- `Status:` 记录 triage 角色，取值见 `triage-labels.md`。
+- `Labels:` 保留原始标签和其他标签；分类时同步更新其中的 triage 标签。
+- 评论追加在文件底部的 `## Comments` 下，注明作者和时间。
+- 父子任务用 `Part of:`、`Sub-issues:` 记录；阻塞关系用 `Blocked by:`、`Blocking:` 记录，均使用本地文件链接。
+- 所有 `Blocked by:` 指向的任务关闭后才可开始。
+- 关闭任务前，追加结果说明，再将 `State:` 改为 `closed`。
 
-## Pull requests as a triage surface
+## 历史 GitHub Issues
 
-**PRs as a request surface: no.**
+- 导入记录与编号索引：`.scratch/github-import/README.md`。
+- 历史任务：`.scratch/github-import/issues/<NN>-github-issue.md`。
+- 原正文、评论中的 `#N` 指向上述索引内的原 GitHub 编号。
+- 保留原始标签；缺少 triage 标签时，初始 `Status:` 为 `needs-triage`。
+- GitHub 作为历史来源，后续任务更新写入本地文件。
+
+## 操作方式
+
+发布任务时创建文件；获取任务时读取文件；查找时按 `State:`、`Status:` 和 `Labels:` 筛选。
+引用新任务时使用文件路径。

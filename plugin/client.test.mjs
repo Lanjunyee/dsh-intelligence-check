@@ -126,11 +126,11 @@ test('every tab renders with shared state', async () => {
   }
 });
 
-test('the default workspace shows questions and keeps text buttons at their natural width', async () => {
+test('the default workspace shows the current question and keeps text buttons at their natural width', async () => {
   const {page} = await pageWith([state]);
   const tree = page({});
   assert.ok(containsText(tree, '质量题库'));
-  assert.ok(containsText(tree, '手动测试无需开启自动监测。'));
+  assert.ok(containsText(tree, '手动检测无需开启自动监测'));
   const nodes = [tree];
   const buttons = [];
   while (nodes.length) {

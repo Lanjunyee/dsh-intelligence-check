@@ -156,6 +156,29 @@ export function loadPlaywright({optional = false} = {}) {
   console.warn(`[ui] ${failure.message}；已跳过浏览器 UI 验证`);
 }
 
+// 浏览器最终计算色到对比度的共用计算：调用方先读取实际颜色，
+// 再在 Node 侧按同一规则判断，不固定设计数值。
+export function rgb(value) {
+  const match = value.match(/rgba?\(([^)]+)\)/);
+  if (match) return match[1].split(',').slice(0, 3).map(Number);
+  const srgb = value.match(/color\(srgb\s+([^)]+)\)/);
+  assert.ok(srgb, `无法解析颜色：${value}`);
+  return srgb[1].split(/\s+/).slice(0, 3).map(channel => Math.round(Number(channel) * 255));
+}
+
+function luminance(value) {
+  const channels = rgb(value).map(channel => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
+export function contrast(foreground, background) {
+  const [lighter, darker] = [luminance(foreground), luminance(background)].sort((left, right) => right - left);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 // 共享 Playwright 启动入口；模块选择和浏览器选择方式保持不变。
 export async function launchChromium() {
   const {chromium} = loadPlaywright();
@@ -182,7 +205,11 @@ export async function startControlledModelServer({models, answer}) {
     const content = body.messages?.at(-1)?.content;
     const prompt = typeof content === 'string' ? content : (content || []).map(part => part.text || '').join('');
     const value = await answer({prompt, body});
-    if (typeof value !== 'string') {
+    // A string is a normal completed answer. An object lets a check choose an
+    // OpenAI finish reason (for example "length") without inventing a second
+    // model server.
+    const answerText = typeof value === 'string' ? value : value?.content;
+    if (typeof answerText !== 'string') {
       const message = `受控模型收到未准备回答的题目：${prompt.slice(0, 200)}`;
       console.error(message);
       response.writeHead(500, {'content-type': 'application/json'});
@@ -191,8 +218,8 @@ export async function startControlledModelServer({models, answer}) {
     }
     response.writeHead(200, {'content-type': 'text/event-stream', 'cache-control': 'no-store'});
     const event = chunk => response.write(`data: ${JSON.stringify(chunk)}\n\n`);
-    event({choices: [{index: 0, delta: {content: value}}]});
-    event({choices: [{index: 0, delta: {}, finish_reason: 'stop'}]});
+    event({choices: [{index: 0, delta: {content: answerText}}]});
+    event({choices: [{index: 0, delta: {}, finish_reason: value?.finish_reason || 'stop'}]});
     event({choices: [], usage: {prompt_tokens: 12, completion_tokens: 5, total_tokens: 17}});
     response.end('data: [DONE]\n\n');
   });
@@ -202,11 +229,12 @@ export async function startControlledModelServer({models, answer}) {
 
 // Opens the DSH-native page: host login, preview notice dismissal, page entry
 // and the requested tab. Callers keep their own assertions and teardown.
-export async function openNativePage(browser, login, {tab}) {
+export async function openNativePage(browser, login, {tab, prepare}) {
   const page = await browser.newPage();
   // 在 goto、入口点击和切换标签前注册，确保早期加载错误也能输出。
   page.on('pageerror', error => console.error('[ui] page error:', error.message));
   page.on('console', message => { if (message.type() === 'error') console.error('[ui] console:', message.text()); });
+  if (prepare) await prepare(page);
   await page.goto(login);
   const entry = page.getByText('模型质量检测', {exact: true}).first();
   await entry.waitFor({timeout: 30000});

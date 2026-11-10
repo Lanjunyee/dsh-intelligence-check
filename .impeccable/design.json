@@ -1,66 +1,66 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-07T00:00:00.000Z",
+  "generatedAt": "2026-11-10T02:34:01.000Z",
   "title": "Design System: 模型质量检测",
   "extensions": {
     "motion": [
       {
         "name": "state-transition",
         "value": "160ms ease-out",
-        "purpose": "题目行选中与悬停的背景、文字过渡。"
+        "purpose": "页签、按钮、菜单触发器与选项、开关、折叠箭头、记录 disclosure 的悬停与选中过渡。"
       },
       {
         "name": "reduced-motion",
         "value": "transition: none",
-        "purpose": "prefers-reduced-motion 下取消题目行过渡。"
+        "purpose": "prefers-reduced-motion 下取消上述全部过渡，不改变状态结果。"
       }
     ],
     "breakpoints": [
       {
-        "name": "workspace-stack",
-        "value": "740px",
-        "purpose": "容器查询：工作区改为上下排列，题目列表折叠为选择器。"
+        "name": "topbar-wrap-history-card",
+        "value": "860px",
+        "purpose": "容器查询（.dic-page inline-size）：顶栏改为品牌/操作一行、页签一行；检测记录由六列摘要改为卡片摘要并显示“评审：”前缀。已验证 861/860 两侧。"
       },
       {
         "name": "workspace-compact",
-        "value": "420px",
-        "purpose": "容器查询：进一步单列并收紧读取区与配置区内边距；隐藏标签页装饰图标、间距收到 16px，保证四个标签同屏可读。"
+        "value": "740px",
+        "purpose": "容器查询：阅读列与操作区收窄内边距；评审字段、归因报告、回答对比、记录对比选择器改单列；历史筛选四列改两列；归因操作区单列、候选行改两列；表格启用 640/720px 局部最小宽度。"
       },
       {
         "name": "control-stack",
         "value": "560px",
-        "purpose": "容器查询：配置区模型与题目选择改为单列，避免长模型名在半宽选择器中不可读；监测页添加目标表单同样改为单列全宽。"
+        "purpose": "容器查询：底部操作区两个菜单改单列、运行整行；添加目标表单单列；监测概览改两列；设置行单列。"
       },
       {
-        "name": "page-pad-md",
-        "value": "820px",
-        "purpose": "视口查询：页面内边距降为 22px 20px 36px。"
+        "name": "tab-icon-hide",
+        "value": "480px",
+        "purpose": "容器查询：隐藏页签装饰图标，页签间距归零、左右内边距 7px、字号 12px，四个入口仍同屏可读。已验证 481/479 两侧。"
       },
       {
-        "name": "page-pad-sm",
-        "value": "520px",
-        "purpose": "视口查询：页面内边距降为 20px 14px 32px。"
+        "name": "workspace-tight",
+        "value": "420px",
+        "purpose": "容器查询：顶栏、阅读列、操作区内边距再收紧；操作区圆角降为 12px；回答工具栏占满整行；空状态降低最小高度；菜单浮层宽 320px。"
       }
     ],
     "focus": {
-      "ring": "2px solid var(--dic-accent)",
-      "offset": "3px",
-      "appliesTo": "输入框、选择器、按钮、标签页、开关、设置复选框、题目行、摘要行与代码块。"
+      "ring": "2px solid var(--dic-focus)",
+      "offset": "2px",
+      "appliesTo": "输入框、选择器、按钮、页签、菜单触发器与选项、开关轨道、设置复选框、题目行、折叠摘要、代码块与原始回答。"
     },
     "typographyVariants": [
       {
-        "name": "code-answer",
-        "refersTo": "typography.code-answer",
-        "appliesTo": "HTML、SVG 与世界海陆地图题目的原始回答；宿主等宽字体、13px、1.95 行高。",
-        "distinctFrom": "typography.code 保持 12px、1.8 行高，用于原始提示词、预览代码等普通代码内容；标签计数使用 11px 等宽次文字，独立于普通代码排版。"
+        "name": "code-unified",
+        "refersTo": "typography.code",
+        "appliesTo": "原始提示词、预览代码与 HTML/SVG/世界海陆地图题目的代码回答统一使用宿主等宽 13px / 1.7。",
+        "distinctFrom": "自然语言回答使用宿主 sans 15px / 1.75；计数、ID 与概率使用 11–14px 等宽，不沿用回答行高。"
       }
     ],
     "tables": [
       {
         "name": "scrollable-table",
-        "minWidth": "640px（模型监测目标表 720px）",
-        "breakpoint": "container ≤740px",
-        "appliesTo": "具有局部横向滚动容器的表格：模型监测目标表与模型归因全部候选表。",
+        "minWidth": "候选表 640px；监测目标表 720px",
+        "breakpoint": "容器查询 ≤740px",
+        "appliesTo": "模型监测目标表与模型归因“全部候选”表，各自拥有局部横向滚动容器。",
         "purpose": "需要横向空间的表格在自身容器内滚动，不撑宽检测页面；目标表为长模型名保留更多列宽。"
       }
     ],
@@ -68,96 +68,430 @@
       {
         "name": "overlay",
         "value": "var(--dsw-elevation-prominent)",
-        "purpose": "仅用于模态框与展开预览。"
+        "purpose": "仅用于菜单浮层、模态框与展开预览；静态内容区不加阴影。"
       },
       {
         "name": "mask",
         "value": "var(--dsw-alias-bg-mask-2)",
-        "purpose": "模态背景遮罩。"
+        "purpose": "模态框背景遮罩。"
       }
-    ]
+    ],
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "纸张底",
+        "canonical": "var(--dsw-alias-bg-base)",
+        "tonalRamp": [
+          "oklch(from var(--dsw-alias-bg-base) 0.15 calc(c * 0.35) h)",
+          "oklch(from var(--dsw-alias-bg-base) 0.25 calc(c * 0.6) h)",
+          "oklch(from var(--dsw-alias-bg-base) 0.35 calc(c * 0.85) h)",
+          "oklch(from var(--dsw-alias-bg-base) 0.45 calc(c * 1) h)",
+          "oklch(from var(--dsw-alias-bg-base) 0.6 calc(c * 1) h)",
+          "oklch(from var(--dsw-alias-bg-base) 0.75 calc(c * 0.8) h)",
+          "oklch(from var(--dsw-alias-bg-base) 0.85 calc(c * 0.5) h)",
+          "oklch(from var(--dsw-alias-bg-base) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "面板",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "抬高面",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "悬停面",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "selected": {
+        "role": "neutral",
+        "displayName": "选中面",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "边界",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "border-soft": {
+        "role": "neutral",
+        "displayName": "柔边界",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "主文字",
+        "canonical": "var(--dsw-alias-label-primary)",
+        "tonalRamp": [
+          "oklch(from var(--dsw-alias-label-primary) 0.15 calc(c * 0.35) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.25 calc(c * 0.6) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.35 calc(c * 0.85) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.45 calc(c * 1) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.6 calc(c * 1) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.75 calc(c * 0.8) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.85 calc(c * 0.5) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "ink-secondary": {
+        "role": "neutral",
+        "displayName": "次文字",
+        "canonical": "var(--dsw-alias-label-secondary)",
+        "tonalRamp": [
+          "oklch(from var(--dsw-alias-label-secondary) 0.15 calc(c * 0.35) h)",
+          "oklch(from var(--dsw-alias-label-secondary) 0.25 calc(c * 0.6) h)",
+          "oklch(from var(--dsw-alias-label-secondary) 0.35 calc(c * 0.85) h)",
+          "oklch(from var(--dsw-alias-label-secondary) 0.45 calc(c * 1) h)",
+          "oklch(from var(--dsw-alias-label-secondary) 0.6 calc(c * 1) h)",
+          "oklch(from var(--dsw-alias-label-secondary) 0.75 calc(c * 0.8) h)",
+          "oklch(from var(--dsw-alias-label-secondary) 0.85 calc(c * 0.5) h)",
+          "oklch(from var(--dsw-alias-label-secondary) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "弱化文字",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "focus": {
+        "role": "neutral",
+        "displayName": "焦点",
+        "canonical": "var(--dsw-alias-label-primary)",
+        "tonalRamp": [
+          "oklch(from var(--dsw-alias-label-primary) 0.15 calc(c * 0.35) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.25 calc(c * 0.6) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.35 calc(c * 0.85) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.45 calc(c * 1) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.6 calc(c * 1) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.75 calc(c * 0.8) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.85 calc(c * 0.5) h)",
+          "oklch(from var(--dsw-alias-label-primary) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "success": {
+        "role": "status",
+        "displayName": "成功",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "error": {
+        "role": "status",
+        "displayName": "错误",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)) 0.95 calc(c * 0.25) h)"
+        ]
+      },
+      "warning": {
+        "role": "status",
+        "displayName": "警告",
+        "canonical": "color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary))",
+        "tonalRamp": [
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)) 0.15 calc(c * 0.35) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)) 0.25 calc(c * 0.6) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)) 0.35 calc(c * 0.85) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)) 0.45 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)) 0.6 calc(c * 1) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)) 0.75 calc(c * 0.8) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)) 0.85 calc(c * 0.5) h)",
+          "oklch(from color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)) 0.95 calc(c * 0.25) h)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "页面标题",
+        "purpose": "顶栏产品名“模型质量检测”。"
+      },
+      "section-title": {
+        "displayName": "区块标题",
+        "purpose": "回答标题、ModelTrace、检测记录与空状态标题。"
+      },
+      "subheading": {
+        "displayName": "小节标题",
+        "purpose": "记录内“原始回答”“提示词原文”与设置分组标题。"
+      },
+      "body": {
+        "displayName": "正文",
+        "purpose": "通用界面文本、字段值、菜单项与表格内容。"
+      },
+      "answer": {
+        "displayName": "回答正文",
+        "purpose": "自然语言回答、对比卡与记录展开正文。"
+      },
+      "label": {
+        "displayName": "标签",
+        "purpose": "字段名、题目名与设置行标签。"
+      },
+      "hint": {
+        "displayName": "提示",
+        "purpose": "说明、元信息、时间、错误原因与免责声明。"
+      },
+      "micro": {
+        "displayName": "微型标签",
+        "purpose": "页签计数、表格列名、概览标签与菜单说明。"
+      },
+      "code": {
+        "displayName": "代码",
+        "purpose": "原始提示词、预览代码与代码回答统一使用 13px/1.7 宿主等宽。"
+      }
+    },
+    "shadows": [
+      {
+        "name": "overlay",
+        "value": "var(--dsw-elevation-prominent)",
+        "purpose": "菜单浮层、模态框与展开预览；静态内容区不加阴影。"
+      }
+    ],
+    "colorRampPolicy": "色阶仅用于侧车色板展示，以宿主语义色为来源在 OKLCH 中生成；不替代 DESIGN.md 的规范色，也不向应用引入新配色。"
   },
   "components": [
     {
-      "name": "Primary Button",
+      "name": "主操作按钮",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "唯一主操作的深绿实心按钮。",
-      "html": "<button class='ds-btn-primary' type='button'>运行检测</button>",
-      "css": ".ds-btn-primary { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-paper: var(--dsw-alias-bg-base); display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 9px 14px; border: 1px solid var(--ds-accent); border-radius: 6px; background: var(--ds-accent); color: var(--ds-paper); font: inherit; font-size: 14px; line-height: 1.4; cursor: pointer; white-space: nowrap; flex-shrink: 0; } .ds-btn-primary:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; } .ds-btn-primary:disabled { opacity: .45; cursor: default; } @media (hover: hover) { .ds-btn-primary:not(:disabled):hover { background: color-mix(in srgb, var(--ds-accent) 88%, var(--ds-paper)); } }"
+      "description": "每屏唯一的深色实心主操作，例如质量题库的“运行”。包含悬停、键盘焦点和禁用状态。",
+      "html": "<div class='ds-primary-page'><button class='ds-primary-btn ds-primary-btn-primary' type='button'>运行</button></div>",
+      "css": ".ds-primary-page { --dic-bg: var(--dsw-alias-bg-base); --dic-text: var(--dsw-alias-label-primary); --dic-border: color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)); font-family: var(--dsw-font-family); font-size: 13px; } .ds-primary-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 8px 12px; border: 1px solid var(--dic-border); border-radius: 9px; background: transparent; color: var(--dic-text); font: inherit; line-height: 1.35; cursor: pointer; flex-shrink: 0; white-space: nowrap; transition: background-color 160ms ease-out; } .ds-primary-btn:focus-visible { outline: 2px solid var(--dic-text); outline-offset: 2px; } .ds-primary-btn:disabled { opacity: .4; cursor: default; } .ds-primary-btn-primary { border-color: var(--dic-text); background: var(--dic-text); color: var(--dic-bg); } @media (hover: hover) { .ds-primary-btn-primary:not(:disabled):hover { background: color-mix(in srgb, var(--dic-text) 86%, var(--dic-bg)); border-color: color-mix(in srgb, var(--dic-text) 86%, var(--dic-bg)); } }"
     },
     {
-      "name": "Icon Button",
+      "name": "次级操作按钮",
       "kind": "button",
-      "refersTo": "button-icon",
-      "description": "40px 方形次级操作按钮，用于复制与下载。",
-      "html": "<button class='ds-btn-icon' type='button' aria-label='复制'><svg width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.2' aria-hidden='true'><rect x='5.5' y='5.5' width='8' height='8' rx='1.5'/><path d='M10.5 5.5V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2'/></svg></button>",
-      "css": ".ds-btn-icon { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-border: color-mix(in srgb, color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f) 16%, var(--dsw-alias-bg-base)); display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--ds-border); border-radius: 6px; background: transparent; color: var(--dsw-alias-label-primary); cursor: pointer; flex-shrink: 0; } .ds-btn-icon svg { flex-shrink: 0; } .ds-btn-icon:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; } .ds-btn-icon:disabled { opacity: .45; cursor: default; } @media (hover: hover) { .ds-btn-icon:not(:disabled):hover { background: var(--dsw-alias-interactive-bg-hover); } }"
+      "refersTo": "button-secondary",
+      "description": "透明底加 1px 边界，用于导出筛选记录等次级操作；悬停转为 6% 文字色面。",
+      "html": "<div class='ds-secondary-page'><button class='ds-secondary-btn' type='button'>导出筛选记录</button></div>",
+      "css": ".ds-secondary-page { --dic-bg: var(--dsw-alias-bg-base); --dic-text: var(--dsw-alias-label-primary); --dic-hover: color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)); --dic-border: color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)); font-family: var(--dsw-font-family); font-size: 13px; } .ds-secondary-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 38px; padding: 8px 12px; border: 1px solid var(--dic-border); border-radius: 9px; background: transparent; color: var(--dic-text); font: inherit; line-height: 1.35; cursor: pointer; flex-shrink: 0; white-space: nowrap; transition: background-color 160ms ease-out; } .ds-secondary-btn:focus-visible { outline: 2px solid var(--dic-text); outline-offset: 2px; } .ds-secondary-btn:disabled { opacity: .4; cursor: default; } @media (hover: hover) { .ds-secondary-btn:not(:disabled):hover { background: var(--dic-hover); } }"
     },
     {
-      "name": "Select Field",
+      "name": "模型 / 题目菜单触发器",
       "kind": "input",
-      "refersTo": "select",
-      "description": "40px 高的模型与记录选择器，带 13px 字段标签。",
-      "html": "<label class='ds-field'>模型<select class='ds-select'><option>DSH 默认模型</option><option>备用模型</option></select></label>",
-      "css": ".ds-field { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-paper: var(--dsw-alias-bg-base); --ds-ground: color-mix(in srgb, var(--ds-accent) 5%, var(--ds-paper)); --ds-border: color-mix(in srgb, var(--ds-accent) 16%, var(--ds-paper)); --ds-muted: color-mix(in srgb, var(--dsw-alias-label-primary) 66%, var(--ds-ground)); display: grid; gap: 8px; min-width: 0; color: var(--ds-muted); font-size: 13px; } .ds-select { min-height: 40px; width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid var(--ds-border); border-radius: 6px; background: var(--ds-paper); color: var(--dsw-alias-label-primary); font: inherit; } .ds-select:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; }"
+      "refersTo": "menu-trigger",
+      "description": "40px 高、9px 圆角的菜单入口，左侧 11px 说明、右侧 13px 当前值；长名称单行省略。",
+      "html": "<div class='ds-menu-page'><button class='ds-menu-trigger' type='button' aria-haspopup='listbox' aria-expanded='false'><span class='ds-menu-caption'>题目</span><span class='ds-menu-value'>牛奶推理</span><svg class='ds-menu-chevron' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='currentColor' stroke-width='1.2' aria-hidden='true'><path d='M3 4.5 6 7.5 9 4.5'/></svg></button></div>",
+      "css": ".ds-menu-page { --dic-bg: var(--dsw-alias-bg-base); --dic-text: var(--dsw-alias-label-primary); --dic-text-3: color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)); --dic-hover: color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base)); --dic-border: color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)); font-family: var(--dsw-font-family); } .ds-menu-trigger { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 40px; padding: 6px 10px; border: 1px solid var(--dic-border); border-radius: 9px; background: var(--dic-bg); color: var(--dic-text); font: inherit; text-align: left; cursor: pointer; transition: background-color 160ms ease-out; } .ds-menu-trigger:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; } .ds-menu-caption { flex: none; color: var(--dic-text-3); font-size: 11px; } .ds-menu-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; } .ds-menu-chevron { flex: none; color: var(--dic-text-3); } @media (hover: hover) { .ds-menu-trigger:hover { background: var(--dic-hover); } }"
     },
     {
-      "name": "Tabs",
+      "name": "数值输入框",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "设置弹窗中的原生数字输入框；13px 字段标签、40px 控件高度、9px 圆角。",
+      "html": "<div class='ds-input-page'><label class='ds-input-field'><span>每日每模型请求上限</span><input class='ds-input-input' type='number' min='1' max='10000' value='120'></label></div>",
+      "css": ".ds-input-page { --dic-bg: var(--dsw-alias-bg-base); --dic-text: var(--dsw-alias-label-primary); --dic-text-3: color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)); --dic-border: color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)); font-family: var(--dsw-font-family); font-size: 13px; } .ds-input-field { display: grid; gap: 6px; color: var(--dic-text-3); font-size: 12px; min-width: 0; } .ds-input-input { min-height: 40px; width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--dic-border); border-radius: 9px; background: var(--dic-bg); color: var(--dic-text); font: inherit; font-size: 13px; } .ds-input-input::placeholder { color: var(--dic-text-3); } .ds-input-input:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; }"
+    },
+    {
+      "name": "工作页页签",
       "kind": "nav",
       "refersTo": "tab",
-      "description": "四个工作页标签，44px 高，选中态为强调色文字与 2px 底线。",
-      "html": "<div class='ds-tabs' role='tablist'><button class='ds-tab' role='tab' aria-selected='true'>质量题库<span class='ds-tab-count'>7</span></button><button class='ds-tab' role='tab' aria-selected='false'>模型监测<span class='ds-tab-count'>2</span></button></div>",
-      "css": ".ds-tabs { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-paper: var(--dsw-alias-bg-base); --ds-border: color-mix(in srgb, var(--ds-accent) 16%, var(--ds-paper)); display: flex; gap: 28px; border-bottom: 1px solid var(--ds-border); overflow-x: auto; } .ds-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; min-height: 44px; padding: 10px 0 13px; border: 0; border-radius: 0; background: none; color: var(--dsw-alias-label-secondary); font: inherit; cursor: pointer; white-space: nowrap; } .ds-tab[aria-selected='true'] { color: var(--ds-accent); font-weight: 600; } .ds-tab[aria-selected='true']::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--ds-accent); } .ds-tab-count { font-family: var(--ds-font-family-code); font-size: 11px; color: var(--dsw-alias-label-secondary); } .ds-tab:focus-visible { outline: 2px solid var(--ds-accent); outline-offset: 3px; } @media (hover: hover) { .ds-tab:hover { color: var(--ds-accent); } }"
+      "description": "四个工作页入口常驻顶栏，32px 高、8px 圆角；选中态为 9% 文字色底而非下划线。",
+      "html": "<div class='ds-tabs-page'><div class='ds-tabs-tabs' role='tablist' aria-label='检测工作页'><button class='ds-tabs-tab' type='button' role='tab' aria-selected='true'>质量题库</button><button class='ds-tabs-tab' type='button' role='tab' aria-selected='false' tabindex='-1'>模型监测<span class='ds-tabs-tab-count'>2</span></button><button class='ds-tabs-tab' type='button' role='tab' aria-selected='false' tabindex='-1'>模型指纹</button><button class='ds-tabs-tab' type='button' role='tab' aria-selected='false' tabindex='-1'>检测记录</button></div></div>",
+      "css": ".ds-tabs-page { --dic-text: var(--dsw-alias-label-primary); --dic-text-2: var(--dsw-alias-label-secondary); --dic-text-3: color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)); --dic-selected: color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-base)); font-family: var(--dsw-font-family); } .ds-tabs-tabs { display: flex; align-items: center; gap: 2px; min-width: 0; } .ds-tabs-tab { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--dic-text-2); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; transition: background-color 160ms ease-out, color 160ms ease-out; } .ds-tabs-tab[aria-selected='true'] { background: var(--dic-selected); color: var(--dic-text); font-weight: 500; } .ds-tabs-tab-count { font-family: var(--ds-font-family-code); font-size: 11px; color: var(--dic-text-3); font-variant-numeric: tabular-nums; } .ds-tabs-tab:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; } @media (hover: hover) { .ds-tabs-tab:hover { color: var(--dic-text); } } @media (prefers-reduced-motion: reduce) { .ds-tabs-tab { transition: none; } }"
     },
     {
-      "name": "Question Row",
+      "name": "检测状态文字",
+      "kind": "chip",
+      "refersTo": "status",
+      "description": "11px/500 的状态文字，不使用胶囊底色；颜色与可见文字同时表达状态。",
+      "html": "<div class='ds-status-page'><span class='ds-status-passed'>通过</span> / <span class='ds-status-failed'>失败</span> / <span class='ds-status-cancelled'>已取消</span> / <span class='ds-status-truncated'>截断</span></div>",
+      "css": ".ds-status-page { --dic-text-2: var(--dsw-alias-label-secondary); --dic-success: color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)); --dic-error: color-mix(in srgb, var(--dsw-alias-state-error-primary) 62%, var(--dsw-alias-label-primary)); --dic-warning: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 62%, var(--dsw-alias-label-primary)); font-family: var(--dsw-font-family); font-size: 11px; } .ds-status-passed, .ds-status-failed, .ds-status-cancelled, .ds-status-truncated { display: inline-flex; font-size: 11px; font-weight: 500; } .ds-status-passed { color: var(--dic-success); } .ds-status-failed { color: var(--dic-error); } .ds-status-cancelled { color: var(--dic-text-2); } .ds-status-truncated { color: var(--dic-warning); }"
+    },
+    {
+      "name": "底部检测操作区",
       "kind": "custom",
-      "refersTo": "question-row",
-      "description": "整行可点击的单选题目，选中后浅绿底与深绿文字，并同步右侧回答标题。",
-      "html": "<label class='ds-question'><input type='radio' name='ds-question' checked><span>表达是否准确、完整？</span><small>基础</small></label>",
-      "css": ".ds-question { --ds-accent: color-mix(in srgb, var(--dsw-alias-label-primary) 70%, #18835f); --ds-paper: var(--dsw-alias-bg-base); --ds-ground: color-mix(in srgb, var(--ds-accent) 5%, var(--ds-paper)); --ds-selected: color-mix(in srgb, var(--ds-accent) 11%, var(--ds-paper)); --ds-muted: color-mix(in srgb, var(--dsw-alias-label-primary) 66%, var(--ds-ground)); position: relative; display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 46px; margin: 3px -8px; padding: 10px; border-radius: 6px; cursor: pointer; transition: background-color 160ms ease-out, color 160ms ease-out; } .ds-question input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; } .ds-question span { font-size: 13px; min-width: 0; overflow-wrap: anywhere; } .ds-question small { color: var(--ds-muted); font-size: 11px; white-space: nowrap; } .ds-question:has(input:checked) { background: var(--ds-selected); color: var(--ds-accent); } .ds-question:has(input:checked) span { font-weight: 600; } .ds-question:has(input:focus-visible) { outline: 2px solid var(--ds-accent); outline-offset: 3px; } @media (hover: hover) { .ds-question:not(:has(input:checked)):hover { background: var(--ds-selected); } } @media (prefers-reduced-motion: reduce) { .ds-question { transition: none; } }"
+      "description": "复刻 Code 输入区外形的操作区：14px 圆角、4% 抬高面、两个菜单与主运行按钮；不遮挡阅读列，≤560px 单列。",
+      "html": "<div class='ds-composer-page'><form class='ds-composer' aria-label='检测操作区'><div class='ds-composer-fields'><button class='ds-composer-trigger' type='button'><span class='ds-composer-caption'>模型</span><span class='ds-composer-value'>gateway-labs / gateway-labs-claude-sonnet-4-5</span></button><button class='ds-composer-trigger' type='button'><span class='ds-composer-caption'>题目</span><span class='ds-composer-value'>牛奶推理</span></button></div><div class='ds-composer-foot'><span class='ds-composer-hint'>牛奶推理 · 手动检测无需开启自动监测</span><div class='ds-composer-actions'><button class='ds-composer-run' type='button'>运行</button></div></div></form></div>",
+      "css": ".ds-composer-page { --dic-bg: var(--dsw-alias-bg-base); --dic-surface: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)); --dic-text: var(--dsw-alias-label-primary); --dic-text-3: color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)); --dic-border: color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)); font-family: var(--dsw-font-family); container-type: inline-size; } .ds-composer { display: grid; gap: 6px; width: 100%; max-width: 760px; margin: 0 auto; padding: 10px 12px 8px; border: 1px solid var(--dic-border); border-radius: 14px; background: var(--dic-surface); } .ds-composer-fields { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 8px; } .ds-composer-trigger { display: flex; align-items: center; gap: 7px; width: 100%; min-height: 40px; padding: 6px 10px; border: 1px solid var(--dic-border); border-radius: 9px; background: var(--dic-bg); color: var(--dic-text); font: inherit; text-align: left; cursor: pointer; } .ds-composer-caption { flex: none; color: var(--dic-text-3); font-size: 11px; } .ds-composer-value { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; } .ds-composer-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 2px 2px 0; } .ds-composer-hint { color: var(--dic-text-3); font-size: 11px; line-height: 1.5; } .ds-composer-actions { display: flex; align-items: center; gap: 6px; margin-left: auto; } .ds-composer-run { min-height: 36px; padding: 0 14px; border: 1px solid var(--dic-text); border-radius: 8px; background: var(--dic-text); color: var(--dic-bg); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; } .ds-composer-trigger:focus-visible, .ds-composer-run:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; } @container (max-width: 560px) { .ds-composer-fields { grid-template-columns: minmax(0, 1fr); } .ds-composer-hint { flex-basis: 100%; } .ds-composer-actions { width: 100%; } .ds-composer-run { flex: 1; } }"
+    },
+    {
+      "name": "监测概览面板",
+      "kind": "card",
+      "description": "监测页顶部的一体化概览卡：auto-fit 分组、10px 圆角、11px 标签与 14px 数值，≤560px 两列。",
+      "html": "<div class='ds-overview-page'><div class='ds-overview'><div class='ds-overview-group'><span class='ds-overview-label'>监测目标</span><span class='ds-overview-value'>4 / 5 已开启</span><span class='ds-overview-note'>5 个目标</span></div><div class='ds-overview-group'><span class='ds-overview-label'>自动检测</span><span class='ds-overview-value'>关闭</span><span class='ds-overview-note'>全局 · 手动检测可用</span></div><div class='ds-overview-group'><span class='ds-overview-label'>今日请求</span><span class='ds-overview-value'>4</span><span class='ds-overview-note'>全部模型</span></div></div></div>",
+      "css": ".ds-overview-page { --dic-panel: color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)); --dic-text: var(--dsw-alias-label-primary); --dic-text-3: color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)); --dic-border-soft: color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)); font-family: var(--dsw-font-family); container-type: inline-size; } .ds-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; padding: 0; overflow: hidden; border: 1px solid var(--dic-border-soft); border-radius: 10px; background: var(--dic-panel); } .ds-overview-group { display: grid; align-content: center; gap: 2px; min-height: 66px; padding: 11px 14px; border-left: 1px solid var(--dic-border-soft); } .ds-overview-group:first-child { border-left: 0; } .ds-overview-label, .ds-overview-note { color: var(--dic-text-3); font-size: 11px; } .ds-overview-value { color: var(--dic-text); font-size: 14px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; } @container (max-width: 560px) { .ds-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ds-overview-group { border-top: 1px solid var(--dic-border-soft); } .ds-overview-group:nth-child(-n+2) { border-top: 0; } .ds-overview-group:nth-child(odd) { border-left: 0; } .ds-overview-group:last-child { grid-column: 1 / -1; } }"
+    },
+    {
+      "name": "检测记录摘要行",
+      "kind": "custom",
+      "description": "宽容器六列摘要，≤860px 改为卡片摘要；行末 disclosure 箭头展开原始回答与提示词。示例数据为演示。",
+      "html": "<div class='ds-history-page'><div class='ds-history-records'><div class='ds-history-head'><span>时间</span><span>模型</span><span>题目</span><span>结果</span><span>评审</span><span class='ds-history-right'>用量</span></div><details class='ds-history-record' open><summary><span class='ds-history-time'>11/10 10:29:25</span><span class='ds-history-model' title='gateway-labs / gateway-labs-claude-sonnet-4-5'>gateway-labs / gateway-labs-claude-sonnet-4-5</span><span class='ds-history-prompt'>牛奶推理</span><span class='ds-history-result'><span class='ds-history-passed'>通过</span></span><span class='ds-history-review'><span class='ds-history-review-label'>评审：</span>待确认</span><span class='ds-history-usage ds-history-right'>17 tokens</span></summary><div class='ds-history-body'><p class='ds-history-hint'>人工评审：待确认</p><h3>原始回答</h3><pre class='ds-history-answer' tabindex='0'>【演示回答，非真实模型评测】\n最终答案：46.24 英寸。</pre><h3>提示词原文</h3><pre class='ds-history-pre' tabindex='0'>【提示词展示位置；未复制测试题原文】</pre></div></details></div></div>",
+      "css": ".ds-history-page { --dic-bg: var(--dsw-alias-bg-base); --dic-surface: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)); --dic-text: var(--dsw-alias-label-primary); --dic-text-2: var(--dsw-alias-label-secondary); --dic-text-3: color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)); --dic-border-soft: color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)); --dic-success: color-mix(in srgb, var(--dsw-alias-state-success-primary) 55%, var(--dsw-alias-label-primary)); font-family: var(--dsw-font-family); font-size: 13px; container-type: inline-size; } .ds-history-head, .ds-history-record summary { display: grid; grid-template-columns: 118px minmax(0, 1fr) 136px 92px minmax(108px, 136px) 82px; gap: 12px; align-items: center; } .ds-history-head { padding: 0 0 8px; border-bottom: 1px solid var(--dic-border-soft); color: var(--dic-text-3); font-size: 11px; } .ds-history-record { border-bottom: 0.5px solid var(--dic-border-soft); } .ds-history-record summary { position: relative; min-height: 42px; padding: 9px 18px 9px 0; cursor: pointer; list-style: none; } .ds-history-record summary::-webkit-details-marker { display: none; } .ds-history-record summary::after { content: ''; position: absolute; top: 50%; right: 3px; width: 6px; height: 6px; border-right: 1.5px solid var(--dic-text-3); border-bottom: 1.5px solid var(--dic-text-3); transform: translateY(-50%) rotate(-45deg); transition: transform 160ms ease-out; } .ds-history-record[open] summary::after { transform: translateY(-50%) rotate(45deg); } .ds-history-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-history-time, .ds-history-prompt, .ds-history-usage { overflow-wrap: anywhere; } .ds-history-review { color: var(--dic-text-2); font-size: 12px; } .ds-history-review-label { display: none; } .ds-history-passed { color: var(--dic-success); font-size: 11px; font-weight: 500; } .ds-history-right { text-align: right; } .ds-history-body { display: grid; gap: 10px; padding: 2px 0 16px; } .ds-history-hint { margin: 0; color: var(--dic-text-3); font-size: 12px; line-height: 1.65; } .ds-history-body h3 { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.5; } .ds-history-answer, .ds-history-pre { margin: 0; min-height: 100px; max-height: 420px; overflow: auto; padding: 12px; border: 1px solid var(--dic-border-soft); border-radius: 8px; background: var(--dic-surface); color: var(--dic-text); white-space: pre-wrap; overflow-wrap: anywhere; } .ds-history-answer { font-family: var(--dsw-font-family); font-size: 15px; line-height: 1.75; } .ds-history-pre { max-height: 360px; font-family: var(--ds-font-family-code); font-size: 13px; line-height: 1.7; } .ds-history-answer:focus-visible, .ds-history-pre:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 2px; } @container (max-width: 860px) { .ds-history-head { display: none; } .ds-history-record summary { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: 'time result review' 'model model model' 'prompt prompt usage'; gap: 5px 10px; } .ds-history-time { grid-area: time; } .ds-history-model { grid-area: model; white-space: normal; overflow-wrap: anywhere; } .ds-history-prompt { grid-area: prompt; } .ds-history-result { grid-area: result; justify-self: end; } .ds-history-review { grid-area: review; justify-self: end; } .ds-history-usage { grid-area: usage; justify-self: end; } .ds-history-review-label { display: inline; } }"
+    },
+    {
+      "name": "设置弹窗",
+      "kind": "custom",
+      "description": "14px 圆角、面板色底与宿主抬升的模态框；分组标题 13px/600，开关为 30×18px 全圆角轨道。",
+      "html": "<div class='ds-modal-page'><div class='ds-modal' role='dialog' aria-modal='true' aria-labelledby='ds-modal-title'><div class='ds-modal-head'><h2 id='ds-modal-title'>检测设置</h2><button class='ds-modal-close' type='button' aria-label='关闭'><svg width='14' height='14' viewBox='0 0 14 14' fill='none' stroke='currentColor' stroke-width='1.3' aria-hidden='true'><path d='M3 3l8 8M11 3l-8 8'/></svg></button></div><div class='ds-modal-group'><h3>自动检测</h3><p>开启后仅对已开启“监测”的检测目标运行“牛奶推理”，默认每 900 秒一次。</p><label class='ds-modal-toggle'><span>全局定时检测</span><input type='checkbox'><span class='ds-modal-track'></span></label></div><div class='ds-modal-actions'><button class='ds-modal-save' type='button'>保存设置</button></div></div></div>",
+      "css": ".ds-modal-page { --dic-bg: var(--dsw-alias-bg-base); --dic-panel: color-mix(in srgb, var(--dsw-alias-label-primary) 2.5%, var(--dsw-alias-bg-base)); --dic-text: var(--dsw-alias-label-primary); --dic-text-2: var(--dsw-alias-label-secondary); --dic-text-3: color-mix(in srgb, var(--dsw-alias-label-primary) 64%, var(--dsw-alias-bg-base)); --dic-border-soft: color-mix(in srgb, var(--dsw-alias-label-primary) 7.5%, var(--dsw-alias-bg-base)); --dic-focus: var(--dsw-alias-label-primary); font-family: var(--dsw-font-family); font-size: 13px; } .ds-modal { display: grid; gap: 16px; width: min(560px, 100%); max-height: calc(100dvh - 32px); overflow: auto; padding: 20px; border-radius: 14px; background: var(--dic-panel); color: var(--dic-text); box-shadow: var(--dsw-elevation-prominent); } .ds-modal-head { display: flex; align-items: center; justify-content: space-between; } .ds-modal-head h2 { margin: 0; font-size: 16px; font-weight: 600; } .ds-modal-close { width: 32px; min-height: 32px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: var(--dic-text-2); font: inherit; cursor: pointer; } .ds-modal-group { display: grid; gap: 10px; } .ds-modal-group h3 { margin: 0; font-size: 13px; font-weight: 600; } .ds-modal-group p { margin: 0; color: var(--dic-text-3); font-size: 12px; line-height: 1.65; } .ds-modal-toggle { position: relative; display: flex; align-items: center; gap: 10px; font-size: 13px; cursor: pointer; } .ds-modal-toggle input { position: absolute; opacity: 0; width: 36px; height: 36px; margin: 0; cursor: pointer; } .ds-modal-track { width: 30px; height: 18px; border-radius: 999px; background: color-mix(in srgb, var(--dsw-alias-label-primary) 4%, var(--dsw-alias-bg-base)); border: 0.5px solid color-mix(in srgb, var(--dsw-alias-label-primary) 12%, var(--dsw-alias-bg-base)); } .ds-modal-track::before { content: ''; display: block; width: 10px; height: 10px; margin: 3.5px; border-radius: 50%; background: var(--dic-text-3); } .ds-modal-toggle input:checked + .ds-modal-track { background: var(--dic-text); border-color: var(--dic-text); } .ds-modal-toggle input:checked + .ds-modal-track::before { margin-left: 15px; background: var(--dic-bg); } .ds-modal-toggle input:focus-visible + .ds-modal-track, .ds-modal-close:focus-visible, .ds-modal-save:focus-visible { outline: 2px solid var(--dic-focus); outline-offset: 2px; } .ds-modal-actions { display: flex; justify-content: flex-end; } .ds-modal-save { min-height: 38px; padding: 8px 12px; border: 1px solid var(--dic-text); border-radius: 9px; background: var(--dic-text); color: var(--dic-bg); font: inherit; font-size: 13px; cursor: pointer; }"
     }
   ],
   "narrative": {
-    "northStar": "检测答卷",
-    "overview": "界面像一张正在填写的答卷：左侧是待选题目与模型，右侧是留白充足的回答阅读区；操作与选择用深绿标记，配置区以极浅的绿色灰度退后。整体服务于“选模型、选题目、运行、读回答”这条主线，不用装饰性图形分散注意力。\n\n视觉密度中等偏低，层级依靠底色、边框和字重，而不是卡片堆叠或阴影。所有颜色、字体、圆角与浮层均取自 DSH 宿主语义变量或由 color-mix 派生，因此明暗主题随宿主自然切换。",
+    "northStar": "宿主工作台",
+    "overview": "这个界面不是一张独立的品牌页面，而是 DSH 宿主里的一张工作台：纸张色底、极浅的面板与细边界、低对比的次级文字，以及唯一一处深色反转的主操作。它借用本机 Claude Desktop Code 界面的中性灰阶语言，让插件看起来像宿主自带的工具，而不是嵌入进来的另一套产品。\n\n视觉重心从旧版的“绿色检测答卷”转到“居中的回答阅读列 + 底部 Code 形操作区”。质量题库只保留一条 760px 的阅读列，模型与题目收进底部操作区；监测、指纹与记录页则使用 1040px 的内容区放置表格与分组。层级依赖字重、留白、底色差（文字色的 2.5%–12% 混合）与 1px/0.5px 边界，而不是卡片堆叠、彩色强调或投影。\n\n所有颜色、字体、圆角与浮层都从宿主语义变量派生，浅色与深色主题随宿主自动切换；界面不维护第二套主题色。",
     "keyCharacteristics": [
-      "浅绿灰配置区、白色阅读区、深绿操作与选中态。",
-      "宿主无衬线字体承载正文，等宽字体只用于代码与计数。",
-      "标准控件尺寸（40px 控件、44px 标签页/摘要行），精确、克制。",
-      "平面为主，分层靠色调与细边框；浮层才使用宿主抬升。"
+      "中性灰阶，没有独立强调色；唯一的高对比是一个深色实心主操作。",
+      "宿主 sans 承担界面与自然语言回答；等宽字体只用于代码、计数、ID 与概率。",
+      "紧凑标题（14/15px）、32px 页签、38/40px 控件，层级靠留白与字重。",
+      "质量题库是 760px 居中阅读列加底部 Code 形操作区；管理页是 1040px 内容区。",
+      "平面为主；阴影只属于菜单、模态框与展开预览。"
     ],
     "rules": [
       {
-        "name": "宿主同源规则",
-        "body": "不新增独立配色；除强调色中既有的 #18835f 绿色种子外，不写死十六进制。新增色必须由宿主语义变量经 color-mix 派生。",
+        "name": "宿主派生规则",
+        "body": "不引入新的色相或第二套主题色；除预览画布必须的 `#fff` 外，不写死十六进制。所有界面颜色必须由 `--dsw-alias-label-primary`、`--dsw-alias-label-secondary` 与 `--dsw-alias-bg-base` 混合；状态文字使用宿主 success/error/warn 语义色的 55%/62% 混合，6px 状态点与失败分段直接使用宿主状态色。",
         "section": "colors"
       },
       {
-        "name": "宿主字体规则",
-        "body": "不引入 Web Font，不覆盖宿主字体栈；标题与正文的差异只通过字号和字重表达。",
+        "name": "单点高对比规则",
+        "body": "同一视图只允许一个深色实心主操作（质量题库的“运行”、设置的“保存设置”、指纹页的“运行三条指纹挑战”）。其余操作一律透明底加 1px 边界；不要把多个按钮做成同等视觉权重。",
+        "section": "colors"
+      },
+      {
+        "name": "紧凑标题规则",
+        "body": "标题最大只到弹窗的 16px；页面标题 14px、区标题 15px、小节 13px。不要用 display 级字号制造层级，层级由字重、间距与容器边界承担。",
         "section": "typography"
       },
       {
-        "name": "平面分层规则",
-        "body": "静态内容区不加阴影；需要区分层级时优先用 ground、selected 与边界绿灰，而不是投影。",
+        "name": "等宽专用规则",
+        "body": "等宽字体只用于代码、计数、模型 ID、概率、字节与 token 数；自然语言回答与界面说明绝不用等宽。",
+        "section": "typography"
+      },
+      {
+        "name": "统一代码排版规则",
+        "body": "普通代码内容与代码回答共用 13px/1.7 的宿主等宽体，不再维护“代码 12px、代码回答 13px”的两档旧约定。",
+        "section": "typography"
+      },
+      {
+        "name": "阅读列规则",
+        "body": "质量题库的回答与底部操作区共用 760px 上限并居中；只有监测、指纹、记录这类管理内容才使用 1040px。不要把管理表格的宽度带进阅读列。",
+        "section": "layout"
+      },
+      {
+        "name": "操作区不覆盖规则",
+        "body": "底部操作区是布局中的一行，不是浮层；长回答只在中部阅读区滚动，评审表单、菜单与预览不得被它遮挡。",
+        "section": "layout"
+      },
+      {
+        "name": "浮层专属规则",
+        "body": "阴影只用于真正离开文档流的浮层：菜单、模态框、固定预览。静态分区、卡片、表格与底部操作区一律不加阴影；需要区分层级时先用抬高面与柔边界。",
         "section": "elevation"
+      },
+      {
+        "name": "小圆角规则",
+        "body": "控件保持在 7–10px；12/14px 只留给底部操作区与模态框；不要给按钮做胶囊形，也不要给静态区块加 16px 以上的大圆角。胶囊只属于开关轨道与状态点。",
+        "section": "shapes"
+      },
+      {
+        "name": "状态双通道规则",
+        "body": "任何状态都不能只靠颜色表达；颜色旁必须有“通过/失败/已取消/截断/待人工评价”等可见文字。",
+        "section": "components"
       }
     ],
     "dos": [
-      "Do 使用宿主语义变量与 color-mix 派生色；明暗主题不单独维护。",
-      "Do 保持 40px 控件、44px 标签页/摘要行、46px 题目行的高度节奏。",
-      "Do 用浅绿灰配置区、白色阅读区、深绿操作与选中态组织“先配置、后阅读”的层级。",
-      "Do 让键盘焦点始终可见：2px 强调色轮廓、外扩 3px。",
-      "Do 用 160ms ease-out 表达选中与悬停，并尊重 reduced-motion。"
+      "**Do** 从宿主语义变量派生所有颜色；浅色与深色只维护一套混合公式。",
+      "**Do** 每屏只保留一个深色实心主操作，其余操作使用透明底加 1px 边界。",
+      "**Do** 保持 32px 页签、38px 按钮、40px 输入与菜单触发器的高度节奏。",
+      "**Do** 让质量题库的阅读列与底部操作区共用 760px 上限，管理页使用 1040px。",
+      "**Do** 让键盘焦点始终可见：2px 主文字色轮廓、外扩 2px。",
+      "**Do** 用 160ms ease-out 表达悬停、选中、开关与 disclosure，并在 reduced-motion 下全部取消。",
+      "**Do** 状态同时给出颜色与文字，表格只在自身容器内横向滚动。"
     ],
     "donts": [
-      "Don't 写死十六进制色值（强调色既有的 #18835f 种子除外）或引入新的字体。",
-      "Don't 为静态区块添加阴影；浮层抬升只用于模态框与展开预览。",
-      "Don't 混用多套圆角；控件 6px、概览 8px、工作区 12px 之外不再扩展。",
-      "Don't 用装饰图形、图像或图标集替代信息层级；图标只作操作提示。",
-      "Don't 改变主操作与次级操作的色彩分工：深绿实心只给唯一主操作。"
+      "**Don't** 恢复旧版的绿色强调色、浅绿配置区或 264px 两栏工作区。",
+      "**Don't** 引入第二个色相、第二套主题色或新的 Web Font。",
+      "**Don't** 给静态区块、表格或底部操作区加阴影；抬升只属于菜单、模态框与展开预览。",
+      "**Don't** 用 display 级大标题或 22px 页面标题；标题上限是弹窗的 16px。",
+      "**Don't** 用等宽字体排自然语言回答，或把代码回答单独降回 12px。",
+      "**Don't** 把页签选中态做成 2px 下划线；它是 9% 文字色的圆角底。",
+      "**Don't** 用颜色作为状态的唯一载体，或给图标按钮省略可访问名称。"
     ]
   }
 }

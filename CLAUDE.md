@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-处理任务或规格时，使用 Lanjunyee/dsh-intelligence-check 的 GitHub Issues；先读 `docs/agents/issue-tracker.md`。
+处理任务或规格时，使用 `.scratch/` 下的本地 Markdown；先读 `docs/agents/issue-tracker.md`。
 
 ### Triage labels
 

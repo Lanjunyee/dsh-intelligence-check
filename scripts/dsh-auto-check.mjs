@@ -167,7 +167,7 @@ async function enableAutoThroughUI(host) {
   await page.locator('.dic-modal input[type=number]').nth(0).fill('1');
   await page.getByRole('button', {name: '保存设置'}).click();
   await page.locator('.dic-modal').waitFor({state: 'detached', timeout: 15000});
-  await page.locator('.dic-overview').filter({hasText: '每 1 秒'}).waitFor({timeout: 15000});
+  await page.locator('.dic-summary').filter({hasText: '每 1 秒'}).waitFor({timeout: 15000});
   await browser.close();
   browser = undefined;
   return true;

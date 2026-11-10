@@ -18,6 +18,8 @@ const {home, work, hosts, dshRun, installProfile, bootProfile, stopHost} = await
 const provider = 'attribution-provider';
 const attributable = 'attributable-model';
 const rejected = 'rejected-model';
+const slow = 'slow-model';
+const broken = 'broken-model';
 
 function traceSequence(count) {
   return Array.from({length: count}, (_, index) => ((index * 37 + 11) % 355) + 1).join(', ');
@@ -28,10 +30,14 @@ let browser;
 let failure;
 try {
   const controlledModel = await startControlledModelServer({
-    models: [attributable, rejected],
-    answer: ({prompt, body}) => {
+    models: [attributable, rejected, slow, broken],
+    answer: async ({prompt, body}) => {
       const challenge = prompt.match(/(\d+)\s*个\s*1 到 355/);
       if (!challenge) return null;
+      // 取消检查需要一条保持进行中的挑战；请求中止后该 promise 无定时器，
+      // 不阻止宿主与受控服务退出。
+      if (body.model === slow) await new Promise(() => {});
+      if (body.model === broken) return null;
       return body.model === rejected ? 'I cannot complete this task.' : traceSequence(Number(challenge[1]));
     },
   });
@@ -49,7 +55,7 @@ try {
     baseURL: `http://127.0.0.1:${port}/v1`,
     provider,
     displayName: 'Attribution Provider',
-    models: [attributable, rejected].map(id => ({id, name: id})),
+    models: [attributable, rejected, slow, broken].map(id => ({id, name: id})),
     defaultModel: attributable,
   })}
 ${pluginConfigOverride()}`);
@@ -65,7 +71,7 @@ ${pluginConfigOverride()}`);
   const traceModelSelect = page.locator('#dic-view-fingerprint .dic-test-controls select').first();
   assert.equal(await traceModelSelect.isDisabled(), true, '无检测目标时归因模型选择器未禁用');
 
-  for (const model of [attributable, rejected]) {
+  for (const model of [attributable, rejected, slow, broken]) {
     const result = await postJSON(client, '/api/target', {provider, model, enabled: true});
     assert.equal(result.status, 200, result.text);
   }
@@ -83,6 +89,17 @@ ${pluginConfigOverride()}`);
   await page.getByText('最相似候选', {exact: true}).waitFor({timeout: 30000});
   assert.match(await page.locator('.dic-page').textContent(), /闭集行为相似性排序/);
   assert.equal(await page.locator('#dic-tab-fingerprint').count(), 1);
+
+  // 进度与结果都应说明当前检测目标和批次，且候选数量来自实际候选库。
+  const progressText = await page.locator('.dic-trace-progress').textContent();
+  assert.match(progressText, new RegExp(`${provider} / ${attributable}`), '进度区未标明检测目标');
+  assert.match(progressText, /批次 \d{2}\/\d{2} \d{2}:\d{2}:\d{2}/, '进度区未标明秒级批次时间');
+  const resultHead = await page.locator('.dic-trace-result-body .dic-section-head').first().textContent();
+  assert.match(resultHead, /基于 3\/3 条有效数字回答 · 批次 \d{2}\/\d{2} \d{2}:\d{2}:\d{2}/,
+    '归因结果未标明所属批次');
+  const sectionHint = await page.locator('#dic-view-fingerprint > .dic-section-head').textContent();
+  assert.match(sectionHint, /个候选 · 闭集比较/, '页头候选库说明未使用实际候选数据');
+  assert.doesNotMatch(sectionHint, /GPT \+ Claude/, '页头仍显示硬编码候选描述');
 
   // 选择“最新批次”后应保持该选择，而不是在最新批次已显示时回退到批次 id。
   const batchSelect = page.locator('#dic-view-fingerprint .dic-test-controls select').nth(1);
@@ -112,6 +129,30 @@ ${pluginConfigOverride()}`);
   await page.locator('.dic-trace-report').waitFor({timeout: 30000});
   assert.equal(await page.locator('.dic-error', {hasText: '本轮无法归因'}).count(), 0,
     '成功批次仍显示归因失败');
+
+  // 取消批次保留三条挑战的真实结果：进行中的挑战标记已取消，后续标记未开始。
+  await selectTraceModel(page, slow);
+  await page.getByRole('button', {name: '运行三条指纹挑战'}).click();
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#dic-view-fingerprint button[aria-label="取消批次"]');
+    return button && !button.disabled;
+  }, {}, {timeout: 30000});
+  await page.getByRole('button', {name: '取消批次'}).click();
+  await page.locator('.dic-trace-state', {hasText: '批次已取消'}).waitFor({timeout: 30000});
+  const cancelledItems = await page.locator('.dic-trace-items li').allTextContents();
+  assert.equal(cancelledItems.length, 3, '取消后三条挑战记录不完整');
+  assert.ok(cancelledItems.some(text => text.includes('已取消')), '取消批次未显示已取消的挑战');
+  assert.ok(cancelledItems.some(text => text.includes('未开始')), '取消批次未标记未开始的挑战');
+  assert.equal(await page.locator('.dic-error', {hasText: '本轮无法归因'}).count(), 0,
+    '取消批次被呈现为归因失败');
+
+  // 调用失败与“无法归因”是不同结果：批次状态和每条挑战都必须保留真实原因。
+  await selectTraceModel(page, broken);
+  await page.getByRole('button', {name: '运行三条指纹挑战'}).click();
+  await page.locator('.dic-trace-state', {hasText: '批次未完成：调用失败'}).waitFor({timeout: 60000});
+  assert.equal(await page.locator('.dic-trace-items li').count(), 3, '调用失败后三条挑战记录不完整');
+  assert.ok(await page.locator('.dic-trace-item-error').count() >= 1, '调用失败未显示挑战错误原因');
+  assert.equal(await page.locator('.dic-trace-report').count(), 0, '调用失败时仍显示成功报告');
 
   console.log('native attribution check passed');
 } catch (error) {
